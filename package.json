@@ -98,7 +98,7 @@
             "3000ms - Minimal CPU usage",
             "5000ms - Slowest, minimal resource usage"
           ],
-          "description": "Clipboard polling interval in milliseconds (how often to check for host clipboard changes)"
+          "markdownDescription": "Clipboard polling interval in milliseconds (how often to check for host clipboard changes). *Only applies when `#scrcpy.clipboardSync#` is enabled.*"
         }
       }
     },
