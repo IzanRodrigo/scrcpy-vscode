@@ -24,6 +24,7 @@ export interface ScrcpyConfig {
   maxFps: number;
   showTouches: boolean;
   clipboardSync: boolean;
+  clipboardPollInterval: number;
 }
 
 // Type for clipboard callback
@@ -681,7 +682,7 @@ export class ScrcpyConnection {
         },
         (err) => { console.error('Failed to read host clipboard:', err); }
       );
-    }, 1000); // Poll every 1 second
+    }, this.config.clipboardPollInterval);
   }
 
   /**

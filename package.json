@@ -86,6 +86,19 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically sync clipboard between host and device"
+        },
+        "scrcpy.clipboardPollInterval": {
+          "type": "number",
+          "default": 1000,
+          "enum": [500, 1000, 2000, 3000, 5000],
+          "enumDescriptions": [
+            "500ms - Fastest, slightly higher CPU usage",
+            "1000ms - Balanced (default)",
+            "2000ms - Lower CPU usage",
+            "3000ms - Minimal CPU usage",
+            "5000ms - Slowest, minimal resource usage"
+          ],
+          "description": "Clipboard polling interval in milliseconds (how often to check for host clipboard changes)"
         }
       }
     },

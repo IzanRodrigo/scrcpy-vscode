@@ -70,6 +70,7 @@ Click the **gear icon** in the scrcpy view toolbar to access settings. Changes a
 | `scrcpy.maxFps` | `60` | Maximum frames per second (15/30/60) |
 | `scrcpy.showTouches` | `false` | Show visual touch feedback on device screen |
 | `scrcpy.clipboardSync` | `true` | Automatically sync clipboard between host and device |
+| `scrcpy.clipboardPollInterval` | `1000` | Clipboard polling interval in ms (500/1000/2000/3000/5000) |
 
 ## Architecture
 

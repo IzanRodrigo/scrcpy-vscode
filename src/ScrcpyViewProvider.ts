@@ -93,7 +93,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       bitRate: config.get<number>('bitRate', 8),
       maxFps: config.get<number>('maxFps', 60),
       showTouches: config.get<boolean>('showTouches', false),
-      clipboardSync: config.get<boolean>('clipboardSync', true)
+      clipboardSync: config.get<boolean>('clipboardSync', true),
+      clipboardPollInterval: config.get<number>('clipboardPollInterval', 1000)
     };
   }
 
