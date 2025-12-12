@@ -18,6 +18,7 @@ let canvas: HTMLCanvasElement;
 let statusElement: HTMLElement;
 let statusTextElement: HTMLElement;
 let statsElement: HTMLElement;
+let controlToolbar: HTMLElement;
 
 /**
  * Initialize the WebView
@@ -31,10 +32,24 @@ function initialize() {
   statusElement = document.getElementById('status') as HTMLElement;
   statusTextElement = document.getElementById('status-text') as HTMLElement;
   statsElement = document.getElementById('stats') as HTMLElement;
+  controlToolbar = document.getElementById('control-toolbar') as HTMLElement;
 
   if (!canvas || !statusElement || !statusTextElement) {
     console.error('Required DOM elements not found');
     return;
+  }
+
+  // Set up control toolbar button handlers
+  if (controlToolbar) {
+    const buttons = controlToolbar.querySelectorAll('.control-btn');
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const keycode = parseInt((button as HTMLElement).dataset.keycode || '0', 10);
+        if (keycode) {
+          vscode.postMessage({ type: 'keyEvent', keycode });
+        }
+      });
+    });
   }
 
   // Initialize video renderer
@@ -96,6 +111,10 @@ function handleVideoFrame(message: {
     // Initial config with dimensions
     videoRenderer.configure(message.width, message.height);
     hideStatus();
+    // Show control toolbar when connected
+    if (controlToolbar) {
+      controlToolbar.classList.remove('hidden');
+    }
   }
 
   if (message.data && message.data.length > 0) {
@@ -125,6 +144,11 @@ function showStatus(text: string) {
 function showError(text: string) {
   statusTextElement.textContent = text;
   statusTextElement.classList.add('error');
+
+  // Hide control toolbar when disconnected
+  if (controlToolbar) {
+    controlToolbar.classList.add('hidden');
+  }
 
   // Hide spinner
   const spinner = statusElement.querySelector('.spinner') as HTMLElement;

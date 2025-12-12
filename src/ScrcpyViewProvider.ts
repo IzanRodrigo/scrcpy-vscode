@@ -157,6 +157,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     action?: 'down' | 'move' | 'up';
     screenWidth?: number;
     screenHeight?: number;
+    keycode?: number;
   }) {
     switch (message.type) {
       case 'touch':
@@ -182,6 +183,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
       case 'openSettings':
         vscode.commands.executeCommand('workbench.action.openSettings', 'scrcpy');
+        break;
+
+      case 'keyEvent':
+        if (this._connection && message.keycode !== undefined) {
+          this._connection.sendKeyEvent(message.keycode);
+        }
         break;
     }
   }
@@ -262,7 +269,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
     #screen {
       width: 100%;
-      max-height: calc(100vh - 60px);
+      max-height: calc(100vh - 110px);
       object-fit: contain;
       touch-action: none;
       cursor: pointer;
@@ -334,11 +341,62 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     .reconnect-btn:hover {
       background: var(--vscode-button-hoverBackground, #106ebe);
     }
+
+    .control-toolbar {
+      display: flex;
+      gap: 4px;
+      justify-content: center;
+      align-items: center;
+      padding: 8px;
+      width: 100%;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .control-toolbar.hidden {
+      display: none;
+    }
+
+    .control-btn {
+      min-width: 36px;
+      height: 28px;
+      padding: 4px 8px;
+      background: var(--vscode-button-secondaryBackground, #3a3d41);
+      color: var(--vscode-button-secondaryForeground, #ccc);
+      border: 1px solid var(--vscode-input-border, #3a3d41);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--vscode-font-family);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s;
+    }
+
+    .control-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground, #45494e);
+    }
+
+    .control-btn:active {
+      background: var(--vscode-button-background, #0078d4);
+      color: var(--vscode-button-foreground, white);
+      transform: scale(0.95);
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <canvas id="screen"></canvas>
+    <div id="control-toolbar" class="control-toolbar hidden">
+      <button class="control-btn" data-keycode="4" title="Back">◀</button>
+      <button class="control-btn" data-keycode="3" title="Home">●</button>
+      <button class="control-btn" data-keycode="187" title="Recent Apps">▢</button>
+      <button class="control-btn" data-keycode="25" title="Volume Down">Vol-</button>
+      <button class="control-btn" data-keycode="24" title="Volume Up">Vol+</button>
+      <button class="control-btn" data-keycode="26" title="Power">⏻</button>
+      <button class="control-btn" data-keycode="82" title="Menu">⋮</button>
+    </div>
     <div id="status" class="status">
       <div class="spinner"></div>
       <div id="status-text">Connecting to device...</div>

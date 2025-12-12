@@ -48,7 +48,8 @@ src/
   - `connect()`: Discovers devices via `adb devices`
   - `startScrcpy()`: Starts server with config-based args
   - `handleScrcpyStream()`: Parses video protocol
-  - `sendTouch()`: Sends control messages
+  - `sendTouch()`: Sends touch control messages (32 bytes)
+  - `sendKeyEvent()`: Sends key control messages (14 bytes)
 
 - **VideoRenderer.ts**: H.264 decoding
   - Uses WebCodecs API in Annex B mode (no description)
@@ -63,7 +64,8 @@ src/
 3. Packets: 12-byte header (pts_flags + size) + data
 
 ### Control Messages (to scrcpy server)
-- Touch events: 32 bytes (type, action, pointer_id, x, y, dimensions, pressure, buttons)
+- Touch events: 32 bytes (type=2, action, pointer_id, x, y, dimensions, pressure, buttons)
+- Key events: 14 bytes (type=0, action, keycode, repeat, metastate)
 
 ### Connection Setup
 1. `adb reverse localabstract:scrcpy_XXXX tcp:PORT`
@@ -93,10 +95,15 @@ The main scrcpy repository is at `/Users/izan/Dev/Projects/scrcpy/`. Key referen
 1. Check `Options.java` in scrcpy for available parameters
 2. Add to `serverArgs` array in `ScrcpyConnection.ts`
 
-### Adding keyboard input
-1. Add key event handler in `InputHandler.ts`
-2. Implement `sendKey()` in `ScrcpyConnection.ts`
-3. Use control message type 0 (INJECT_KEYCODE)
+### Adding new control buttons
+1. Add button HTML in `_getHtmlForWebview()` in `ScrcpyViewProvider.ts` with `data-keycode` attribute
+2. The button click handler in `webview/main.ts` automatically picks up new buttons
+3. Android keycodes: HOME=3, BACK=4, VOL_UP=24, VOL_DOWN=25, POWER=26, MENU=82, APP_SWITCH=187
+
+### Adding text/keyboard input
+1. Add keyboard event handler in `webview/main.ts`
+2. Send keycode messages via `sendKeyEvent()` in `ScrcpyConnection.ts`
+3. Or use INJECT_TEXT (type 1) for text strings
 
 ### Adding audio support
 1. Set `audio=true` in server args
@@ -117,3 +124,4 @@ No automated tests yet. Manual testing:
 3. Click the Android Device icon in the Activity Bar (left sidebar)
 4. Drag the view to the Secondary Sidebar (right side) for optimal placement
 5. Verify video displays and touch works
+6. Verify control buttons work (Back, Home, Recent Apps, Volume, Power, Menu)

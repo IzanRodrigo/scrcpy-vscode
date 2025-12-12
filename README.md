@@ -6,6 +6,7 @@ Display and control your Android device screen directly within VS Code, similar 
 
 - View Android device screen in real-time
 - Touch input support (tap, drag)
+- **Device control buttons** (Back, Home, Recent Apps, Volume, Power, Menu)
 - Hardware-accelerated video decoding (WebCodecs API)
 - Configurable video quality, resolution, and FPS
 - Turn device screen off while mirroring (saves battery)
@@ -130,6 +131,25 @@ Offset  Size  Field
 28      4     Buttons
 ```
 
+**Control Messages (Key Event) - 14 bytes:**
+```
+Offset  Size  Field
+0       1     Type (0 = INJECT_KEYCODE)
+1       1     Action (0=down, 1=up)
+2       4     Keycode (Android AKEYCODE_*)
+6       4     Repeat count
+10      4     Metastate
+```
+
+**Android Keycodes used:**
+- `AKEYCODE_HOME` (3) - Home button
+- `AKEYCODE_BACK` (4) - Back button
+- `AKEYCODE_VOLUME_UP` (24) - Volume Up
+- `AKEYCODE_VOLUME_DOWN` (25) - Volume Down
+- `AKEYCODE_POWER` (26) - Power button
+- `AKEYCODE_MENU` (82) - Menu button
+- `AKEYCODE_APP_SWITCH` (187) - Recent Apps
+
 ### Video Decoding
 
 Uses WebCodecs API following the same approach as the native scrcpy client:
@@ -199,19 +219,19 @@ npm run watch
 
 - Single device support (uses first detected device)
 - Video only (audio forwarding not implemented)
-- Touch input only (keyboard input not implemented)
+- Text/keyboard input not implemented (only hardware buttons)
 - No rotation handling
 - No clipboard sync
 
 ## Future Improvements
 
 - [ ] Multi-device selection dialog
-- [ ] Keyboard input support
+- [ ] Text/keyboard input support
 - [ ] Audio forwarding
 - [ ] Screen rotation handling
 - [ ] Clipboard synchronization
 - [ ] Wireless ADB support
-- [ ] Status bar with FPS/bitrate info
+- [x] ~~Hardware button controls~~ ✅ Implemented
 
 ## Requirements
 
