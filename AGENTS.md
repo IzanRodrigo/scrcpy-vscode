@@ -71,6 +71,7 @@ src/
   - `handleControlSocketData()`: Parses device messages (clipboard, ACKs)
   - `sendTouch()`: Sends touch control messages (32 bytes)
   - `sendKeyDown()` / `sendKeyUp()`: Sends separate key down/up events (14 bytes each)
+  - `rotateDevice()`: Rotates device screen counter-clockwise (1 byte control message)
   - Clipboard sync: On-demand via `pasteFromHost()` (Ctrl+V) and `copyToHost()` (Ctrl+C), listens for device clipboard messages
   - Error handling: Reports unexpected disconnects via `onError` callback (shows reconnect UI)
 
@@ -103,6 +104,7 @@ src/
 - Touch events: 32 bytes (type=2, action, pointer_id, x, y, dimensions, pressure, buttons)
 - Key events: 14 bytes (type=0, action, keycode, repeat, metastate)
 - Set clipboard: variable (type=9, sequence 8 bytes, paste flag 1 byte, length 4 bytes, UTF-8 text)
+- Rotate device: 1 byte (type=11)
 
 ### Device Messages (from scrcpy server via control socket)
 - Clipboard: variable (type=0, length 4 bytes, UTF-8 text)
@@ -217,3 +219,9 @@ No automated tests yet. Manual testing:
     - Click mute button again to unmute
     - Switch device tabs and verify only active tab plays audio
     - Toggle `scrcpy.audio` setting and reconnect to verify audio is disabled
+13. Test screen rotation:
+    - Click rotate button (↺) in toolbar and verify device rotates counter-clockwise
+    - Verify canvas resizes to match new orientation
+    - Verify touch input still works correctly after rotation
+    - Toggle `scrcpy.lockVideoOrientation` setting and reconnect
+    - Rotate device physically and verify video stays fixed when lock is enabled

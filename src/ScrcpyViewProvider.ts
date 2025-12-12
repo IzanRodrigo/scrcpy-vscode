@@ -80,7 +80,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
         // Reconnect for scrcpy options that affect the stream
         const reconnectSettings = ['scrcpy.path', 'scrcpy.screenOff', 'scrcpy.stayAwake',
-          'scrcpy.maxSize', 'scrcpy.bitRate', 'scrcpy.maxFps', 'scrcpy.showTouches', 'scrcpy.audio'];
+          'scrcpy.maxSize', 'scrcpy.bitRate', 'scrcpy.maxFps', 'scrcpy.showTouches', 'scrcpy.audio',
+          'scrcpy.lockVideoOrientation'];
         const needsReconnect = reconnectSettings.some(s => e.affectsConfiguration(s));
 
         if (needsReconnect && this._deviceManager) {
@@ -116,7 +117,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       clipboardPollInterval: config.get<number>('clipboardPollInterval', 1000),
       autoConnect: config.get<boolean>('autoConnect', true),
       autoReconnect: config.get<boolean>('autoReconnect', true),
-      reconnectRetries: config.get<number>('reconnectRetries', 2)
+      reconnectRetries: config.get<number>('reconnectRetries', 2),
+      lockVideoOrientation: config.get<boolean>('lockVideoOrientation', false)
     };
   }
 
@@ -284,6 +286,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       case 'copyToHost':
         if (this._deviceManager) {
           await this._deviceManager.copyToHost();
+        }
+        break;
+
+      case 'rotateDevice':
+        if (this._deviceManager) {
+          this._deviceManager.rotateDevice();
         }
         break;
 
@@ -760,6 +768,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         <button class="control-btn" data-keycode="187" title="Recent Apps">&#x25A0;</button>
       </div>
       <div class="toolbar-group toolbar-right">
+        <button class="control-btn" id="rotate-btn" title="Rotate">&#x21BA;</button>
         <button class="control-btn" data-keycode="26" title="Power">&#x23FB;</button>
       </div>
     </div>

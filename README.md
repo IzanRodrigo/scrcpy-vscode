@@ -9,7 +9,7 @@ Display and control your Android device screen directly within VS Code, similar 
 - **Audio streaming** - hear device audio with mute button (requires scrcpy 2.0+)
 - Touch input support (tap, drag)
 - **Keyboard input** - click canvas to enable typing, with modifier support (Ctrl, Alt, Shift)
-- **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power)
+- **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power, Rotate)
 - **Clipboard sync** - Ctrl+V pastes from PC to device, Ctrl+C copies from device to PC
 - **Auto-connect** - automatically connects when devices are plugged in
 - **Auto-reconnect** - automatic reconnection on disconnect (configurable retries)
@@ -78,6 +78,7 @@ Click the **gear icon** in the scrcpy view toolbar to access settings. Changes a
 | `scrcpy.autoConnect` | `true` | Automatically connect to devices when they are plugged in |
 | `scrcpy.autoReconnect` | `true` | Automatically attempt to reconnect when connection is lost |
 | `scrcpy.reconnectRetries` | `2` | Number of reconnection attempts (1/2/3/5) |
+| `scrcpy.lockVideoOrientation` | `false` | Lock video orientation to current rotation (disables auto-rotate) |
 
 ## Architecture
 
@@ -202,6 +203,13 @@ Offset  Size  Field
 14      n     UTF-8 text data
 ```
 
+**Control Messages (Rotate Device) - 1 byte:**
+
+```
+Offset  Size  Field
+0       1     Type (11 = ROTATE_DEVICE)
+```
+
 **Device Messages (Clipboard) - Variable length:**
 
 ```
@@ -289,7 +297,6 @@ npm run watch
 
 ## Known Limitations
 
-- No rotation handling
 - Audio requires scrcpy 2.0+ and a device that supports audio capture
 
 ## Future Improvements
@@ -299,7 +306,7 @@ npm run watch
 - [x] ~~Hardware button controls~~ ✅ Implemented (with long press support)
 - [x] ~~Text/keyboard input~~ ✅ Implemented (click canvas to enable, supports modifiers)
 - [x] ~~Audio forwarding~~ ✅ Implemented (Opus via opus-decoder WASM library)
-- [ ] Screen rotation handling
+- [x] ~~Screen rotation handling~~ ✅ Implemented (rotate button + lock orientation setting)
 - [ ] Wireless ADB support
 
 ## Requirements

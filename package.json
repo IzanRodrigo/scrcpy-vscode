@@ -111,6 +111,12 @@
             "default": false,
             "order": 2,
             "markdownDescription": "Show visual touch feedback on device screen"
+          },
+          "scrcpy.lockVideoOrientation": {
+            "type": "boolean",
+            "default": false,
+            "order": 3,
+            "markdownDescription": "Lock video orientation to current rotation (disables auto-rotate)"
           }
         }
       },

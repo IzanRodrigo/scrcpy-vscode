@@ -202,6 +202,10 @@ class DeviceSession {
   async copyToHost(): Promise<void> {
     await this.connection?.copyToHost();
   }
+
+  rotateDevice(): void {
+    this.connection?.rotateDevice();
+  }
 }
 
 /**
@@ -440,6 +444,13 @@ export class DeviceManager {
    */
   async copyToHost(): Promise<void> {
     await this.getActiveSession()?.copyToHost();
+  }
+
+  /**
+   * Rotate active device screen counter-clockwise
+   */
+  rotateDevice(): void {
+    this.getActiveSession()?.rotateDevice();
   }
 
   /**

@@ -38,6 +38,7 @@ export interface ScrcpyConfig {
   autoConnect: boolean;
   autoReconnect: boolean;
   reconnectRetries: number;
+  lockVideoOrientation: boolean;
 }
 
 // Type for clipboard callback
@@ -231,6 +232,7 @@ export class ScrcpyConnection {
       `max_fps=${this.config.maxFps}`,
       `stay_awake=${this.config.stayAwake}`,
       `show_touches=${this.config.showTouches}`,
+      ...(this.config.lockVideoOrientation ? ['capture_orientation=@'] : []),
       'send_device_meta=true',
       'send_frame_meta=true',
       'send_codec_meta=true'
@@ -639,6 +641,25 @@ export class ScrcpyConnection {
       this.controlSocket.write(msg);
     } catch (error) {
       console.error('Failed to set display power:', error);
+    }
+  }
+
+  /**
+   * Rotate device screen counter-clockwise
+   */
+  rotateDevice(): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Control message format: type (1) = 1 byte only
+    const msg = Buffer.alloc(1);
+    msg.writeUInt8(11, 0); // TYPE_ROTATE_DEVICE = 11
+
+    try {
+      this.controlSocket.write(msg);
+    } catch (error) {
+      console.error('Failed to rotate device:', error);
     }
   }
 

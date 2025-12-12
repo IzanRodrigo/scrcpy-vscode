@@ -164,6 +164,14 @@ function initialize() {
     });
   }
 
+  // Rotate button
+  const rotateBtn = document.getElementById('rotate-btn');
+  if (rotateBtn) {
+    rotateBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'rotateDevice' });
+    });
+  }
+
   vscode.postMessage({ type: 'ready' });
   console.log('WebView initialized');
 }
