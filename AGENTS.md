@@ -54,6 +54,8 @@ src/
   - `switchToDevice()`: Switches active device (pauses inactive, resumes active)
   - Prevents duplicate device connections
   - Notifies webview of session list changes
+  - Auto-connect: Polls for new devices every 2s and connects automatically
+  - Auto-reconnect: Configurable retries (1-5) with 1.5s delay on unexpected disconnect
 
 - **ScrcpyConnection.ts**: Core connection logic
   - Accepts `ScrcpyConfig` for configurable server parameters
@@ -161,7 +163,17 @@ No automated tests yet. Manual testing:
    - Copy text on host (VS Code) and verify it appears on device (paste in an app)
    - Copy text on device and verify it appears on host clipboard
    - Toggle `scrcpy.clipboardSync` setting and verify sync stops/starts
-9. Test disconnect handling:
-   - Open Android Studio while connected (restarts ADB)
-   - Verify "Disconnected from device" error shows with wifi-off icon
-   - Click "Reconnect" button and verify connection restores
+9. Test auto-connect:
+   - Start with no devices connected (should show "No devices connected" with phone icon)
+   - Plug in a device via USB
+   - Verify device auto-connects within 2 seconds
+   - Unplug device, verify error screen
+   - Plug in again, verify auto-reconnects
+   - Toggle `scrcpy.autoConnect` setting and verify behavior changes
+10. Test auto-reconnect:
+    - Open Android Studio while connected (restarts ADB)
+    - Verify "Reconnecting (attempt 1/2)..." status shows
+    - If reconnect succeeds, verify video resumes
+    - If reconnect fails after all attempts, verify error screen with phone icon
+    - Click "Reconnect" button and verify manual reconnection works
+    - Plug in device again after failure, verify auto-connect picks it up

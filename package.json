@@ -135,6 +135,37 @@
             "markdownDescription": "Clipboard polling interval in milliseconds. *Only applies when `#scrcpy.clipboardSync#` is enabled.*"
           }
         }
+      },
+      {
+        "title": "Connection",
+        "order": 5,
+        "properties": {
+          "scrcpy.autoConnect": {
+            "type": "boolean",
+            "default": true,
+            "order": 0,
+            "markdownDescription": "Automatically connect to devices when they are plugged in"
+          },
+          "scrcpy.autoReconnect": {
+            "type": "boolean",
+            "default": true,
+            "order": 1,
+            "markdownDescription": "Automatically attempt to reconnect when connection is lost"
+          },
+          "scrcpy.reconnectRetries": {
+            "type": "number",
+            "default": 2,
+            "order": 2,
+            "enum": [1, 2, 3, 5],
+            "enumDescriptions": [
+              "1 retry",
+              "2 retries (default)",
+              "3 retries",
+              "5 retries"
+            ],
+            "markdownDescription": "Number of reconnection attempts before showing error. *Only applies when `#scrcpy.autoReconnect#` is enabled.*"
+          }
+        }
       }
     ],
     "commands": [

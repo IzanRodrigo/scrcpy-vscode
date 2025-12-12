@@ -44,6 +44,10 @@ class DeviceSession {
   public isPaused = false;
 
   private connection: ScrcpyConnection | null = null;
+  private retryCount = 0;
+  private isReconnecting = false;
+  private isDisposed = false;
+  private static readonly RETRY_DELAY_MS = 1500;
 
   constructor(
     deviceInfo: DeviceInfo,
@@ -51,7 +55,8 @@ class DeviceSession {
     private statusCallback: StatusCallback,
     private errorCallback: ErrorCallback,
     private config: ScrcpyConfig,
-    private clipboardAPI?: ClipboardAPI
+    private clipboardAPI?: ClipboardAPI,
+    private onSessionFailed?: (deviceId: string) => void
   ) {
     this.deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.deviceInfo = deviceInfo;
@@ -70,16 +75,68 @@ class DeviceSession {
       this.deviceInfo.serial,
       undefined, // onClipboard callback (handled internally by ScrcpyConnection)
       this.clipboardAPI,
-      (error) => this.errorCallback(this.deviceId, error) // onError for unexpected disconnects
+      (error) => this.handleDisconnect(error) // onError for unexpected disconnects
     );
 
     try {
       await this.connection.connect();
       await this.connection.startScrcpy();
+      // Reset retry count on successful connection
+      this.retryCount = 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.errorCallback(this.deviceId, message);
       throw error;
+    }
+  }
+
+  /**
+   * Handle unexpected disconnect with auto-reconnect
+   */
+  private async handleDisconnect(error: string): Promise<void> {
+    // Don't reconnect if disposed or already reconnecting
+    if (this.isDisposed || this.isReconnecting) return;
+
+    const maxRetries = this.config.autoReconnect ? this.config.reconnectRetries : 0;
+
+    // Retry loop
+    while (this.retryCount < maxRetries && !this.isDisposed) {
+      this.isReconnecting = true;
+      this.retryCount++;
+
+      this.statusCallback(this.deviceId, `Reconnecting (attempt ${this.retryCount}/${maxRetries})...`);
+
+      // Wait before reconnecting (gives ADB time to recover)
+      await new Promise(resolve => setTimeout(resolve, DeviceSession.RETRY_DELAY_MS));
+
+      // Check if disposed during wait
+      if (this.isDisposed) {
+        this.isReconnecting = false;
+        return;
+      }
+
+      try {
+        // Cleanup old connection
+        if (this.connection) {
+          await this.connection.disconnect();
+          this.connection = null;
+        }
+
+        // Try to reconnect
+        await this.connect();
+        this.isReconnecting = false;
+        return; // Success! Exit the retry loop
+      } catch {
+        // Retry failed, continue to next attempt
+        this.isReconnecting = false;
+      }
+    }
+
+    // All retries exhausted (or auto-reconnect disabled), show error
+    this.errorCallback(this.deviceId, error);
+    // Notify that session has failed so it can be removed
+    if (this.onSessionFailed) {
+      this.onSessionFailed(this.deviceId);
     }
   }
 
@@ -92,6 +149,7 @@ class DeviceSession {
   }
 
   async disconnect(): Promise<void> {
+    this.isDisposed = true; // Prevent auto-reconnect attempts
     if (this.connection) {
       await this.connection.disconnect();
       this.connection = null;
@@ -123,6 +181,10 @@ class DeviceSession {
 export class DeviceManager {
   private sessions = new Map<string, DeviceSession>();
   private activeDeviceId: string | null = null;
+  private deviceMonitorInterval: NodeJS.Timeout | null = null;
+  private knownDeviceSerials = new Set<string>();
+  private isMonitoring = false;
+  private static readonly DEVICE_POLL_INTERVAL_MS = 2000;
 
   constructor(
     private videoFrameCallback: VideoFrameCallback,
@@ -180,7 +242,8 @@ export class DeviceManager {
       this.statusCallback,
       this.errorCallback,
       this.config,
-      this.clipboardAPI
+      this.clipboardAPI,
+      (deviceId) => this.handleSessionFailed(deviceId)
     );
 
     this.sessions.set(session.deviceId, session);
@@ -333,6 +396,109 @@ export class DeviceManager {
    */
   updateConfig(config: ScrcpyConfig): void {
     this.config = config;
+  }
+
+  /**
+   * Handle session failure (all reconnect attempts exhausted)
+   * Removes the session to allow auto-connect to work for the same device
+   */
+  private handleSessionFailed(deviceId: string): void {
+    const session = this.sessions.get(deviceId);
+    if (!session) return;
+
+    const deviceSerial = session.deviceInfo.serial;
+
+    // Remove the failed session
+    this.sessions.delete(deviceId);
+
+    // Remove from known devices so auto-connect can pick it up again
+    this.knownDeviceSerials.delete(deviceSerial);
+
+    // If this was the active device, clear active state
+    if (this.activeDeviceId === deviceId) {
+      this.activeDeviceId = null;
+      // Switch to first available session if any
+      const firstSession = this.sessions.values().next().value as DeviceSession | undefined;
+      if (firstSession) {
+        this.switchToDevice(firstSession.deviceId);
+      }
+    }
+
+    this.notifySessionListChanged();
+  }
+
+  /**
+   * Start monitoring for new devices (auto-connect)
+   */
+  async startDeviceMonitoring(): Promise<void> {
+    if (this.isMonitoring) return;
+    this.isMonitoring = true;
+
+    // Initialize known devices with currently connected sessions
+    this.knownDeviceSerials.clear();
+    for (const session of this.sessions.values()) {
+      this.knownDeviceSerials.add(session.deviceInfo.serial);
+    }
+
+    // Only mark existing ADB devices as "known" if we have active sessions
+    // This prevents the race condition where a device plugged in during startup
+    // gets marked as known and never auto-connects
+    if (this.sessions.size > 0) {
+      const devices = await this.getAvailableDevices();
+      for (const device of devices) {
+        this.knownDeviceSerials.add(device.serial);
+      }
+    }
+
+    this.deviceMonitorInterval = setInterval(() => {
+      this.checkForNewDevices();
+    }, DeviceManager.DEVICE_POLL_INTERVAL_MS);
+  }
+
+  /**
+   * Stop monitoring for new devices
+   */
+  stopDeviceMonitoring(): void {
+    this.isMonitoring = false;
+    if (this.deviceMonitorInterval) {
+      clearInterval(this.deviceMonitorInterval);
+      this.deviceMonitorInterval = null;
+    }
+    this.knownDeviceSerials.clear();
+  }
+
+  /**
+   * Check for newly connected devices and auto-connect
+   */
+  private async checkForNewDevices(): Promise<void> {
+    if (!this.config.autoConnect) return;
+
+    const devices = await this.getAvailableDevices();
+    const currentSerials = new Set(devices.map(d => d.serial));
+
+    // Find new devices (present now but not known before)
+    for (const device of devices) {
+      if (!this.knownDeviceSerials.has(device.serial) && !this.isDeviceConnected(device.serial)) {
+        // New device detected - auto-connect
+        // Clear any error state by sending status before connecting
+        this.statusCallback('', `Connecting to ${device.name}...`);
+
+        try {
+          await this.addDevice(device);
+          // Successfully connected - mark as known
+          this.knownDeviceSerials.add(device.serial);
+        } catch {
+          // Failed to connect - don't mark as known so we retry next poll
+        }
+      }
+    }
+
+    // Remove devices that are no longer present (unplugged)
+    for (const serial of Array.from(this.knownDeviceSerials)) {
+      if (!currentSerials.has(serial)) {
+        this.knownDeviceSerials.delete(serial);
+      }
+    }
   }
 
   private notifySessionListChanged(): void {

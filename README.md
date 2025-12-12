@@ -9,7 +9,8 @@ Display and control your Android device screen directly within VS Code, similar 
 - Touch input support (tap, drag)
 - **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power)
 - **Clipboard sync** - bidirectional clipboard synchronization between host and device
-- **Auto-reconnect** - graceful disconnect handling with one-click reconnect
+- **Auto-connect** - automatically connects when devices are plugged in
+- **Auto-reconnect** - automatic reconnection on disconnect (configurable retries)
 - Hardware-accelerated video decoding (WebCodecs API)
 - Configurable video quality, resolution, and FPS
 - Turn device screen off while mirroring (saves battery)
@@ -72,6 +73,9 @@ Click the **gear icon** in the scrcpy view toolbar to access settings. Changes a
 | `scrcpy.showTouches` | `false` | Show visual touch feedback on device screen |
 | `scrcpy.clipboardSync` | `true` | Automatically sync clipboard between host and device |
 | `scrcpy.clipboardPollInterval` | `1000` | Clipboard polling interval in ms (500/1000/2000/3000/5000) |
+| `scrcpy.autoConnect` | `true` | Automatically connect to devices when they are plugged in |
+| `scrcpy.autoReconnect` | `true` | Automatically attempt to reconnect when connection is lost |
+| `scrcpy.reconnectRetries` | `2` | Number of reconnection attempts (1/2/3/5) |
 
 ## Architecture
 
@@ -243,8 +247,9 @@ npm run watch
 ### "Disconnected from device"
 
 - This can happen if Android Studio or another tool restarts ADB
-- Click the **Reconnect** button to restore the connection
-- If reconnecting fails, check that the device is still connected via USB
+- The extension will automatically attempt to reconnect (up to 2 times)
+- If auto-reconnect fails, click the **Reconnect** button to try again
+- Check that the device is still connected via USB
 
 ### "Timeout waiting for device connection"
 

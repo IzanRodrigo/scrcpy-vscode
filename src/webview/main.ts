@@ -544,6 +544,12 @@ function showEmptyState() {
     spinner.style.display = 'none';
   }
 
+  // Hide error icon if exists
+  const errorIcon = statusElement.querySelector('.error-icon') as HTMLElement;
+  if (errorIcon) {
+    errorIcon.style.display = 'none';
+  }
+
   // Show empty icon
   let emptyIcon = statusElement.querySelector('.empty-icon') as HTMLElement;
   if (!emptyIcon) {

@@ -94,7 +94,10 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       maxFps: config.get<number>('maxFps', 60),
       showTouches: config.get<boolean>('showTouches', false),
       clipboardSync: config.get<boolean>('clipboardSync', true),
-      clipboardPollInterval: config.get<number>('clipboardPollInterval', 1000)
+      clipboardPollInterval: config.get<number>('clipboardPollInterval', 1000),
+      autoConnect: config.get<boolean>('autoConnect', true),
+      autoReconnect: config.get<boolean>('autoReconnect', true),
+      reconnectRetries: config.get<number>('reconnectRetries', 2)
     };
   }
 
@@ -157,6 +160,9 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     );
 
     this._autoConnectFirstDevice();
+
+    // Start monitoring for new devices (auto-connect)
+    this._deviceManager.startDeviceMonitoring();
   }
 
   private async _autoConnectFirstDevice() {
@@ -319,6 +325,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
   private async _disconnect() {
     if (this._deviceManager) {
+      this._deviceManager.stopDeviceMonitoring();
       await this._deviceManager.disconnectAll();
       this._deviceManager = undefined;
     }

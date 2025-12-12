@@ -28,6 +28,9 @@ export interface ScrcpyConfig {
   showTouches: boolean;
   clipboardSync: boolean;
   clipboardPollInterval: number;
+  autoConnect: boolean;
+  autoReconnect: boolean;
+  reconnectRetries: number;
 }
 
 // Type for clipboard callback
