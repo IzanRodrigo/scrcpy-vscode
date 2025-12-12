@@ -54,14 +54,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     // Listen for configuration changes and reconnect
     vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration('scrcpy') && this._connection) {
-        try {
-          vscode.window.showInformationMessage('Scrcpy settings changed. Reconnecting...');
-          await this._disconnect();
-          await this._connect();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          vscode.window.showErrorMessage(`Failed to reconnect: ${message}`);
-        }
+        this._view?.webview.postMessage({
+          type: 'status',
+          message: 'Settings changed. Reconnecting...'
+        });
+        await this._disconnect();
+        await this._connect();
       }
     }, null, this._disposables);
 
@@ -89,57 +87,32 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
     this._isConnecting = true;
     try {
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Connecting to Android device...',
-          cancellable: true
+      const config = this._getConfig();
+      this._connection = new ScrcpyConnection(
+        // Video frame callback
+        (frameData: Uint8Array, isConfig: boolean, width?: number, height?: number) => {
+          this._view?.webview.postMessage({
+            type: 'videoFrame',
+            data: Array.from(frameData),
+            isConfig,
+            width,
+            height
+          });
         },
-        async (progress, token) => {
-          const config = this._getConfig();
-          this._connection = new ScrcpyConnection(
-            // Video frame callback
-            (frameData: Uint8Array, isConfig: boolean, width?: number, height?: number) => {
-              this._view?.webview.postMessage({
-                type: 'videoFrame',
-                data: Array.from(frameData),
-                isConfig,
-                width,
-                height
-              });
-            },
-            // Status callback
-            (status: string) => {
-              this._view?.webview.postMessage({
-                type: 'status',
-                message: status
-              });
-            },
-            config
-          );
-
-          if (token.isCancellationRequested) {
-            this._connection = undefined;
-            return;
-          }
-
-          await this._connection.connect();
-
-          if (token.isCancellationRequested) {
-            await this._connection.disconnect();
-            this._connection = undefined;
-            return;
-          }
-
-          progress.report({ message: 'Starting screen mirroring...' });
-          await this._connection.startScrcpy();
-
-          vscode.window.showInformationMessage('Connected to Android device');
-        }
+        // Status callback
+        (status: string) => {
+          this._view?.webview.postMessage({
+            type: 'status',
+            message: status
+          });
+        },
+        config
       );
+
+      await this._connection.connect();
+      await this._connection.startScrcpy();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to connect: ${message}`);
       this._view?.webview.postMessage({
         type: 'error',
         message: `Connection failed: ${message}`
@@ -200,13 +173,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         });
         if (result && result[0]) {
           await vscode.workspace.getConfiguration('scrcpy').update('path', result[0].fsPath, true);
-          vscode.window.showInformationMessage(`Scrcpy path set to: ${result[0].fsPath}`);
         }
         break;
 
       case 'resetScrcpyPath':
         await vscode.workspace.getConfiguration('scrcpy').update('path', undefined, true);
-        vscode.window.showInformationMessage('Scrcpy path reset to default (using PATH)');
         break;
     }
   }
