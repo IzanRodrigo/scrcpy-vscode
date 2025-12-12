@@ -14,6 +14,9 @@ type VideoFrameCallback = (
 // Type for status callback
 type StatusCallback = (status: string) => void;
 
+// Type for error callback (used for unexpected disconnects)
+type ErrorCallback = (message: string) => void;
+
 // Scrcpy configuration options
 export interface ScrcpyConfig {
   scrcpyPath: string;
@@ -66,7 +69,8 @@ export class ScrcpyConnection {
     private config: ScrcpyConfig,
     targetDeviceSerial?: string,
     private onClipboard?: ClipboardCallback,
-    private clipboardAPI?: ClipboardAPI
+    private clipboardAPI?: ClipboardAPI,
+    private onError?: ErrorCallback
   ) {
     this.targetSerial = targetDeviceSerial ?? null;
   }
@@ -230,7 +234,12 @@ export class ScrcpyConnection {
       console.log('scrcpy server exited with code:', code);
       if (this.isConnected) {
         this.isConnected = false;
-        this.onStatus('Server disconnected');
+        // Report as error so reconnect button appears
+        if (this.onError) {
+          this.onError('Server disconnected');
+        } else {
+          this.onStatus('Server disconnected');
+        }
       }
     });
 
@@ -446,8 +455,14 @@ export class ScrcpyConnection {
 
     socket.on('close', () => {
       console.log('Scrcpy socket closed');
+      const wasConnected = this.isConnected;
       this.isConnected = false;
-      this.onStatus('Disconnected from device');
+      // Report as error (not status) so reconnect button appears
+      if (wasConnected && this.onError) {
+        this.onError('Disconnected from device');
+      } else {
+        this.onStatus('Disconnected from device');
+      }
     });
 
     socket.on('error', (err: Error) => {

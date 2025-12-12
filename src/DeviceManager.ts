@@ -69,7 +69,8 @@ class DeviceSession {
       this.config,
       this.deviceInfo.serial,
       undefined, // onClipboard callback (handled internally by ScrcpyConnection)
-      this.clipboardAPI
+      this.clipboardAPI,
+      (error) => this.errorCallback(this.deviceId, error) // onError for unexpected disconnects
     );
 
     try {

@@ -437,10 +437,14 @@ function showStatus(text: string) {
     spinner.style.display = 'block';
   }
 
-  // Hide empty icon if exists
+  // Hide icons if they exist
   const emptyIcon = statusElement.querySelector('.empty-icon') as HTMLElement;
   if (emptyIcon) {
     emptyIcon.style.display = 'none';
+  }
+  const errorIcon = statusElement.querySelector('.error-icon') as HTMLElement;
+  if (errorIcon) {
+    errorIcon.style.display = 'none';
   }
 
   // Remove buttons if exists
@@ -469,39 +473,44 @@ function showError(text: string) {
     spinner.style.display = 'none';
   }
 
+  // Show disconnected icon
+  let errorIcon = statusElement.querySelector('.error-icon') as HTMLElement;
+  if (!errorIcon) {
+    errorIcon = document.createElement('div');
+    errorIcon.className = 'error-icon';
+    // Disconnected/unplugged icon
+    errorIcon.innerHTML = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="1" y1="1" x2="23" y2="23"></line>
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+      <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+      <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+      <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+      <line x1="12" y1="20" x2="12.01" y2="20"></line>
+    </svg>`;
+    errorIcon.style.cssText = 'margin-bottom: 12px; opacity: 0.6;';
+    statusElement.insertBefore(errorIcon, statusTextElement);
+  }
+  errorIcon.style.display = 'block';
+
+  // Hide empty icon if exists
+  const emptyIcon = statusElement.querySelector('.empty-icon') as HTMLElement;
+  if (emptyIcon) {
+    emptyIcon.style.display = 'none';
+  }
+
   // Remove existing buttons
   let btnContainer = statusElement.querySelector('.button-container') as HTMLElement;
   if (btnContainer) {
     btnContainer.remove();
   }
 
-  // Create button container
+  // Create button container with only reconnect button
   btnContainer = document.createElement('div');
   btnContainer.className = 'button-container';
-  btnContainer.style.cssText = 'display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap;';
+  btnContainer.style.cssText = 'display: flex; gap: 8px; justify-content: center; margin-top: 12px;';
   statusElement.appendChild(btnContainer);
 
-  // Add browse path button
-  const browseBtn = document.createElement('button');
-  browseBtn.className = 'reconnect-btn';
-  browseBtn.textContent = 'Browse...';
-  browseBtn.title = 'Select scrcpy installation folder';
-  browseBtn.onclick = () => {
-    vscode.postMessage({ type: 'browseScrcpyPath' });
-  };
-  btnContainer.appendChild(browseBtn);
-
-  // Add reset path button
-  const resetBtn = document.createElement('button');
-  resetBtn.className = 'reconnect-btn';
-  resetBtn.textContent = 'Reset Path';
-  resetBtn.title = 'Reset scrcpy path to default (use PATH)';
-  resetBtn.onclick = () => {
-    vscode.postMessage({ type: 'resetScrcpyPath' });
-  };
-  btnContainer.appendChild(resetBtn);
-
-  // Add reconnect button
   const reconnectBtn = document.createElement('button');
   reconnectBtn.className = 'reconnect-btn';
   reconnectBtn.textContent = 'Reconnect';

@@ -9,6 +9,7 @@ Display and control your Android device screen directly within VS Code, similar 
 - Touch input support (tap, drag)
 - **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power)
 - **Clipboard sync** - bidirectional clipboard synchronization between host and device
+- **Auto-reconnect** - graceful disconnect handling with one-click reconnect
 - Hardware-accelerated video decoding (WebCodecs API)
 - Configurable video quality, resolution, and FPS
 - Turn device screen off while mirroring (saves battery)
@@ -238,7 +239,12 @@ npm run watch
 
 - Ensure scrcpy is installed: `scrcpy --version`
 - Ensure scrcpy is in your PATH, or set `scrcpy.path` in settings
-- Click the "Settings" button in the error screen to configure the path
+
+### "Disconnected from device"
+
+- This can happen if Android Studio or another tool restarts ADB
+- Click the **Reconnect** button to restore the connection
+- If reconnecting fails, check that the device is still connected via USB
 
 ### "Timeout waiting for device connection"
 

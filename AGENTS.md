@@ -58,13 +58,15 @@ src/
 - **ScrcpyConnection.ts**: Core connection logic
   - Accepts `ScrcpyConfig` for configurable server parameters
   - Accepts optional `targetDeviceSerial` to connect to specific device
+  - Accepts optional `onError` callback for unexpected disconnects
   - `connect()`: Discovers devices via `adb devices`
   - `startScrcpy()`: Starts server with config-based args
   - `handleScrcpyStream()`: Parses video protocol
   - `handleControlSocketData()`: Parses device messages (clipboard, ACKs)
   - `sendTouch()`: Sends touch control messages (32 bytes)
   - `sendKeyDown()` / `sendKeyUp()`: Sends separate key down/up events (14 bytes each)
-  - Clipboard sync: Polls host clipboard every 1s, listens for device clipboard messages
+  - Clipboard sync: Polls host clipboard (configurable interval), listens for device clipboard messages
+  - Error handling: Reports unexpected disconnects via `onError` callback (shows reconnect UI)
 
 - **VideoRenderer.ts**: H.264 decoding
   - Uses WebCodecs API in Annex B mode (no description)
@@ -159,3 +161,7 @@ No automated tests yet. Manual testing:
    - Copy text on host (VS Code) and verify it appears on device (paste in an app)
    - Copy text on device and verify it appears on host clipboard
    - Toggle `scrcpy.clipboardSync` setting and verify sync stops/starts
+9. Test disconnect handling:
+   - Open Android Studio while connected (restarts ADB)
+   - Verify "Disconnected from device" error shows with wifi-off icon
+   - Click "Reconnect" button and verify connection restores
