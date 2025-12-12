@@ -62,7 +62,7 @@ src/
   - `startScrcpy()`: Starts server with config-based args
   - `handleScrcpyStream()`: Parses video protocol
   - `sendTouch()`: Sends touch control messages (32 bytes)
-  - `sendKeyEvent()`: Sends key control messages (14 bytes)
+  - `sendKeyDown()` / `sendKeyUp()`: Sends separate key down/up events (14 bytes each)
 
 - **VideoRenderer.ts**: H.264 decoding
   - Uses WebCodecs API in Annex B mode (no description)
@@ -112,12 +112,13 @@ The main scrcpy repository is at `/Users/izan/Dev/Projects/scrcpy/`. Key referen
 
 ### Adding new control buttons
 1. Add button HTML in `_getHtmlForWebview()` in `ScrcpyViewProvider.ts` with `data-keycode` attribute
-2. The button click handler in `webview/main.ts` automatically picks up new buttons
-3. Android keycodes: HOME=3, BACK=4, VOL_UP=24, VOL_DOWN=25, POWER=26, MENU=82, APP_SWITCH=187
+2. The pointer event handlers in `webview/main.ts` automatically pick up new buttons
+3. Buttons support long press (sends KEY_DOWN on press, KEY_UP on release)
+4. Android keycodes: HOME=3, BACK=4, VOL_UP=24, VOL_DOWN=25, POWER=26, MENU=82, APP_SWITCH=187
 
 ### Adding text/keyboard input
 1. Add keyboard event handler in `webview/main.ts`
-2. Send keycode messages via `sendKeyEvent()` in `ScrcpyConnection.ts`
+2. Send keycode messages via `sendKeyDown()` / `sendKeyUp()` in `ScrcpyConnection.ts`
 3. Or use INJECT_TEXT (type 1) for text strings
 
 ### Adding audio support
@@ -140,6 +141,8 @@ No automated tests yet. Manual testing:
 4. Drag the view to the Secondary Sidebar (right side) for optimal placement
 5. Verify video displays and touch works
 6. Verify control buttons work (Volume, Back, Home, Recent Apps, Power)
+   - Quick tap: should trigger single key press
+   - Long press: should trigger long press action (e.g., hold Power for power menu)
 7. Test multi-device support:
    - Click "+" button to add another device
    - Verify device picker shows available devices

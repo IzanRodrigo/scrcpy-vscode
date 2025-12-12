@@ -104,8 +104,12 @@ class DeviceSession {
     this.connection?.sendTouch(x, y, action, screenWidth, screenHeight);
   }
 
-  sendKeyEvent(keycode: number): void {
-    this.connection?.sendKeyEvent(keycode);
+  sendKeyDown(keycode: number): void {
+    this.connection?.sendKeyDown(keycode);
+  }
+
+  sendKeyUp(keycode: number): void {
+    this.connection?.sendKeyUp(keycode);
   }
 }
 
@@ -293,10 +297,17 @@ export class DeviceManager {
   }
 
   /**
-   * Send key event to active device
+   * Send key down to active device
    */
-  sendKeyEvent(keycode: number): void {
-    this.getActiveSession()?.sendKeyEvent(keycode);
+  sendKeyDown(keycode: number): void {
+    this.getActiveSession()?.sendKeyDown(keycode);
+  }
+
+  /**
+   * Send key up to active device
+   */
+  sendKeyUp(keycode: number): void {
+    this.getActiveSession()?.sendKeyUp(keycode);
   }
 
   /**

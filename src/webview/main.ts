@@ -69,14 +69,43 @@ function initialize() {
     return;
   }
 
-  // Set up control toolbar
+  // Set up control toolbar with long-press support
   if (controlToolbar) {
     const buttons = controlToolbar.querySelectorAll('.control-btn');
     buttons.forEach((button) => {
-      button.addEventListener('click', () => {
-        const keycode = parseInt((button as HTMLElement).dataset.keycode || '0', 10);
-        if (keycode) {
-          vscode.postMessage({ type: 'keyEvent', keycode });
+      const keycode = parseInt((button as HTMLElement).dataset.keycode || '0', 10);
+      if (!keycode) return;
+
+      // Send key down on pointer press
+      button.addEventListener('pointerdown', (e) => {
+        const event = e as PointerEvent;
+        vscode.postMessage({ type: 'keyDown', keycode });
+        try {
+          (button as HTMLElement).setPointerCapture(event.pointerId);
+        } catch {
+          // Ignore errors from setting capture
+        }
+      });
+
+      // Send key up on pointer release
+      button.addEventListener('pointerup', (e) => {
+        const event = e as PointerEvent;
+        vscode.postMessage({ type: 'keyUp', keycode });
+        try {
+          (button as HTMLElement).releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore errors from releasing capture
+        }
+      });
+
+      // Handle pointer cancel (e.g., touch interrupted)
+      button.addEventListener('pointercancel', (e) => {
+        const event = e as PointerEvent;
+        vscode.postMessage({ type: 'keyUp', keycode });
+        try {
+          (button as HTMLElement).releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore errors from releasing capture
         }
       });
     });

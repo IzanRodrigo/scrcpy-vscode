@@ -510,42 +510,44 @@ export class ScrcpyConnection {
   }
 
   /**
-   * Send key event to device (press and release)
+   * Send key down event to device
    */
-  sendKeyEvent(keycode: number): void {
+  sendKeyDown(keycode: number): void {
+    this._sendKey(keycode, 0); // action: down = 0
+  }
+
+  /**
+   * Send key up event to device
+   */
+  sendKeyUp(keycode: number): void {
+    this._sendKey(keycode, 1); // action: up = 1
+  }
+
+  /**
+   * Send key event with specific action
+   */
+  private _sendKey(keycode: number, action: number): void {
     if (!this.controlSocket || !this.isConnected) {
       return;
     }
 
     // Scrcpy control message format for key event:
     // type (1) + action (1) + keycode (4) + repeat (4) + metastate (4) = 14 bytes
-    const msgDown = Buffer.alloc(14);
+    const msg = Buffer.alloc(14);
 
     // Type: INJECT_KEYCODE = 0
-    msgDown.writeUInt8(0, 0);
-    // Action: down = 0
-    msgDown.writeUInt8(0, 1);
+    msg.writeUInt8(0, 0);
+    // Action: down = 0, up = 1
+    msg.writeUInt8(action, 1);
     // Keycode (32-bit big-endian)
-    msgDown.writeUInt32BE(keycode, 2);
+    msg.writeUInt32BE(keycode, 2);
     // Repeat count (32-bit big-endian)
-    msgDown.writeUInt32BE(0, 6);
+    msg.writeUInt32BE(0, 6);
     // Metastate (32-bit big-endian)
-    msgDown.writeUInt32BE(0, 10);
-
-    // Key up message
-    const msgUp = Buffer.alloc(14);
-    msgUp.writeUInt8(0, 0);
-    msgUp.writeUInt8(1, 1); // action: up = 1
-    msgUp.writeUInt32BE(keycode, 2);
-    msgUp.writeUInt32BE(0, 6);
-    msgUp.writeUInt32BE(0, 10);
+    msg.writeUInt32BE(0, 10);
 
     try {
-      this.controlSocket?.write(msgDown);
-      // Small delay between down and up for reliability
-      setTimeout(() => {
-        this.controlSocket?.write(msgUp);
-      }, 50);
+      this.controlSocket.write(msg);
     } catch (error) {
       console.error('Failed to send key event:', error);
     }

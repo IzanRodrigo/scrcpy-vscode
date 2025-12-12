@@ -201,9 +201,15 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         }
         break;
 
-      case 'keyEvent':
+      case 'keyDown':
         if (this._deviceManager && message.keycode !== undefined) {
-          this._deviceManager.sendKeyEvent(message.keycode);
+          this._deviceManager.sendKeyDown(message.keycode);
+        }
+        break;
+
+      case 'keyUp':
+        if (this._deviceManager && message.keycode !== undefined) {
+          this._deviceManager.sendKeyUp(message.keycode);
         }
         break;
 

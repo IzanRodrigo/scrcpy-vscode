@@ -7,7 +7,7 @@ Display and control your Android device screen directly within VS Code, similar 
 - **Multi-device support** with tab bar for switching between devices
 - View Android device screen in real-time
 - Touch input support (tap, drag)
-- **Device control buttons** (Volume, Back, Home, Recent Apps, Power)
+- **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power)
 - Hardware-accelerated video decoding (WebCodecs API)
 - Configurable video quality, resolution, and FPS
 - Turn device screen off while mirroring (saves battery)
@@ -240,7 +240,7 @@ npm run watch
 - [ ] Screen rotation handling
 - [ ] Clipboard synchronization
 - [ ] Wireless ADB support
-- [x] ~~Hardware button controls~~ ✅ Implemented
+- [x] ~~Hardware button controls~~ ✅ Implemented (with long press support)
 
 ## Requirements
 
