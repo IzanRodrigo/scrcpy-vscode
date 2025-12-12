@@ -217,10 +217,24 @@ function toggleMute(): void {
  * Take a screenshot of the active device (via ADB screencap for original resolution)
  */
 function takeScreenshot(): void {
-  if (!activeDeviceId) return;
+  if (!activeDeviceId || !screenshotBtn) return;
+
+  // Show loading state on button
+  screenshotBtn.classList.add('loading');
+  screenshotBtn.innerHTML = '<span class="btn-spinner"></span>';
 
   // Send request to extension - screenshot is taken via ADB for original quality
   vscode.postMessage({ type: 'screenshot' });
+}
+
+/**
+ * Reset screenshot button to normal state
+ */
+function resetScreenshotButton(): void {
+  if (!screenshotBtn) return;
+
+  screenshotBtn.classList.remove('loading');
+  screenshotBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
 }
 
 /**
@@ -270,6 +284,10 @@ function handleMessage(event: MessageEvent) {
 
     case 'settings':
       handleSettings(message);
+      break;
+
+    case 'screenshotComplete':
+      resetScreenshotButton();
       break;
   }
 }

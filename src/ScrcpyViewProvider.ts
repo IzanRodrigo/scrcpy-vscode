@@ -455,8 +455,13 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async _takeAndSaveScreenshot(): Promise<void> {
+    const notifyComplete = () => {
+      this._view?.webview.postMessage({ type: 'screenshotComplete' });
+    };
+
     if (!this._deviceManager) {
       vscode.window.showErrorMessage('No device connected');
+      notifyComplete();
       return;
     }
 
@@ -478,6 +483,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       });
 
       if (!uri) {
+        notifyComplete();
         return; // User cancelled
       }
 
@@ -489,6 +495,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to take screenshot: ${message}`);
+    } finally {
+      notifyComplete();
     }
   }
 
@@ -717,6 +725,25 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-button-background, #0078d4);
       color: var(--vscode-button-foreground, white);
       transform: scale(0.95);
+    }
+
+    .control-btn.loading {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .btn-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--vscode-button-secondaryForeground, #ccc);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: btn-spin 0.8s linear infinite;
+    }
+
+    @keyframes btn-spin {
+      to { transform: rotate(360deg); }
     }
 
     /* Status overlay */
