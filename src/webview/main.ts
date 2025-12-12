@@ -198,10 +198,17 @@ function updateRotateButton(width: number, height: number): void {
 }
 
 /**
- * Toggle audio mute state
+ * Toggle audio forwarding setting
  */
 function toggleMute(): void {
-  isMuted = !isMuted;
+  vscode.postMessage({ type: 'toggleAudio' });
+}
+
+/**
+ * Update audio state from settings
+ */
+function updateAudioState(audioEnabled: boolean): void {
+  isMuted = !audioEnabled;
 
   // Update all audio renderers
   sessions.forEach(session => {
@@ -210,8 +217,8 @@ function toggleMute(): void {
 
   // Update button icon
   if (muteBtn) {
-    muteBtn.innerHTML = isMuted ? '&#x1F507;' : '&#x1F50A;'; // 🔇 : 🔊
-    muteBtn.title = isMuted ? 'Unmute' : 'Mute';
+    muteBtn.innerHTML = audioEnabled ? '&#x1F50A;' : '&#x1F507;'; // 🔊 : 🔇
+    muteBtn.title = audioEnabled ? 'Disable audio forwarding' : 'Enable audio forwarding';
   }
 }
 
@@ -331,7 +338,7 @@ function handleError(message: { deviceId?: string; message: string }) {
 /**
  * Handle settings update from extension
  */
-function handleSettings(message: { showStats?: boolean }) {
+function handleSettings(message: { showStats?: boolean; audioEnabled?: boolean }) {
   if (message.showStats !== undefined) {
     showStats = message.showStats;
     // Update all existing renderers
@@ -342,6 +349,10 @@ function handleSettings(message: { showStats?: boolean }) {
     if (!showStats) {
       statsElement.classList.add('hidden');
     }
+  }
+
+  if (message.audioEnabled !== undefined) {
+    updateAudioState(message.audioEnabled);
   }
 }
 

@@ -74,7 +74,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration('scrcpy')) {
         // Send settings updates that don't require reconnect
-        if (e.affectsConfiguration('scrcpy.showStats')) {
+        if (e.affectsConfiguration('scrcpy.showStats') || e.affectsConfiguration('scrcpy.audio')) {
           this._sendSettings();
         }
 
@@ -127,7 +127,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('scrcpy');
     this._view.webview.postMessage({
       type: 'settings',
-      showStats: config.get<boolean>('showStats', false)
+      showStats: config.get<boolean>('showStats', false),
+      audioEnabled: config.get<boolean>('audio', true)
     });
   }
 
@@ -294,6 +295,14 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       case 'rotateDevice':
         if (this._deviceManager) {
           this._deviceManager.rotateDevice();
+        }
+        break;
+
+      case 'toggleAudio':
+        {
+          const config = vscode.workspace.getConfiguration('scrcpy');
+          const currentAudio = config.get<boolean>('audio', true);
+          config.update('audio', !currentAudio, vscode.ConfigurationTarget.Global);
         }
         break;
 
@@ -765,7 +774,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     <!-- Control toolbar - fixed at bottom -->
     <div id="control-toolbar" class="control-toolbar hidden">
       <div class="toolbar-group toolbar-left">
-        <button class="control-btn" id="mute-btn" title="Mute">&#x1F50A;</button>
+        <button class="control-btn" id="mute-btn" title="Disable audio forwarding">&#x1F50A;</button>
         <button class="control-btn" data-keycode="25" title="Volume Down">Vol-</button>
         <button class="control-btn" data-keycode="24" title="Volume Up">Vol+</button>
       </div>
