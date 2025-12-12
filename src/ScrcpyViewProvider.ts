@@ -344,12 +344,9 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
     .control-toolbar {
       display: flex;
-      gap: 4px;
-      justify-content: center;
       align-items: center;
       padding: 8px;
       width: 100%;
-      flex-wrap: wrap;
       flex-shrink: 0;
     }
 
@@ -383,19 +380,42 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-button-foreground, white);
       transform: scale(0.95);
     }
+
+    .toolbar-group {
+      display: flex;
+      gap: 4px;
+      flex: 1;
+    }
+
+    .toolbar-left {
+      justify-content: flex-start;
+    }
+
+    .toolbar-center {
+      justify-content: center;
+    }
+
+    .toolbar-right {
+      justify-content: flex-end;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <canvas id="screen"></canvas>
     <div id="control-toolbar" class="control-toolbar hidden">
-      <button class="control-btn" data-keycode="4" title="Back">◀</button>
-      <button class="control-btn" data-keycode="3" title="Home">●</button>
-      <button class="control-btn" data-keycode="187" title="Recent Apps">▢</button>
-      <button class="control-btn" data-keycode="25" title="Volume Down">Vol-</button>
-      <button class="control-btn" data-keycode="24" title="Volume Up">Vol+</button>
-      <button class="control-btn" data-keycode="26" title="Power">⏻</button>
-      <button class="control-btn" data-keycode="82" title="Menu">⋮</button>
+      <div class="toolbar-group toolbar-left">
+        <button class="control-btn" data-keycode="25" title="Volume Down">Vol-</button>
+        <button class="control-btn" data-keycode="24" title="Volume Up">Vol+</button>
+      </div>
+      <div class="toolbar-group toolbar-center">
+        <button class="control-btn" data-keycode="4" title="Back">◀</button>
+        <button class="control-btn" data-keycode="3" title="Home">●</button>
+        <button class="control-btn" data-keycode="187" title="Recent Apps">■</button>
+      </div>
+      <div class="toolbar-group toolbar-right">
+        <button class="control-btn" data-keycode="26" title="Power">⏻</button>
+      </div>
     </div>
     <div id="status" class="status">
       <div class="spinner"></div>

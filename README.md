@@ -6,7 +6,7 @@ Display and control your Android device screen directly within VS Code, similar 
 
 - View Android device screen in real-time
 - Touch input support (tap, drag)
-- **Device control buttons** (Back, Home, Recent Apps, Volume, Power, Menu)
+- **Device control buttons** (Volume, Back, Home, Recent Apps, Power)
 - Hardware-accelerated video decoding (WebCodecs API)
 - Configurable video quality, resolution, and FPS
 - Turn device screen off while mirroring (saves battery)
@@ -147,7 +147,6 @@ Offset  Size  Field
 - `AKEYCODE_VOLUME_UP` (24) - Volume Up
 - `AKEYCODE_VOLUME_DOWN` (25) - Volume Down
 - `AKEYCODE_POWER` (26) - Power button
-- `AKEYCODE_MENU` (82) - Menu button
 - `AKEYCODE_APP_SWITCH` (187) - Recent Apps
 
 ### Video Decoding

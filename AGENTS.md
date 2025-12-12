@@ -124,4 +124,4 @@ No automated tests yet. Manual testing:
 3. Click the Android Device icon in the Activity Bar (left sidebar)
 4. Drag the view to the Secondary Sidebar (right side) for optimal placement
 5. Verify video displays and touch works
-6. Verify control buttons work (Back, Home, Recent Apps, Volume, Power, Menu)
+6. Verify control buttons work (Volume, Back, Home, Recent Apps, Power)
