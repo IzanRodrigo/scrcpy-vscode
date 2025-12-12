@@ -173,7 +173,6 @@ export class ScrcpyConnection {
       `max_size=${this.config.maxSize}`,
       `video_bit_rate=${this.config.bitRate * 1000000}`,
       `max_fps=${this.config.maxFps}`,
-      `turn_screen_off=${this.config.screenOff}`,
       `stay_awake=${this.config.stayAwake}`,
       `show_touches=${this.config.showTouches}`,
       'send_device_meta=true',
@@ -214,6 +213,11 @@ export class ScrcpyConnection {
       this.isConnected = true;
       this.controlSocket = controlSocket;
       this.onStatus('Connected! Receiving video stream...');
+
+      // Turn screen off if configured
+      if (this.config.screenOff) {
+        setTimeout(() => this.setDisplayPower(false), 100);
+      }
 
       // Handle the scrcpy protocol on video socket
       this.handleScrcpyStream(videoSocket);
@@ -471,6 +475,26 @@ export class ScrcpyConnection {
       this.controlSocket.write(msg);
     } catch (error) {
       console.error('Failed to send touch event:', error);
+    }
+  }
+
+  /**
+   * Set display power (turn screen on/off)
+   */
+  setDisplayPower(on: boolean): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Control message format: type (1) + boolean (1) = 2 bytes
+    const msg = Buffer.alloc(2);
+    msg.writeUInt8(10, 0); // TYPE_SET_DISPLAY_POWER = 10
+    msg.writeUInt8(on ? 1 : 0, 1);
+
+    try {
+      this.controlSocket.write(msg);
+    } catch (error) {
+      console.error('Failed to set display power:', error);
     }
   }
 
