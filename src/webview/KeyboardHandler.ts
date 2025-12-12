@@ -32,6 +32,11 @@ const AMETA = {
 };
 
 /**
+ * Check if running on macOS
+ */
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+/**
  * Map browser key to Android keycode
  */
 const KEY_TO_KEYCODE: Record<string, number> = {
@@ -154,6 +159,13 @@ export class KeyboardHandler {
   }
 
   /**
+   * Check if the primary modifier key is pressed (Cmd on Mac, Ctrl elsewhere)
+   */
+  private hasPrimaryModifier(event: KeyboardEvent): boolean {
+    return isMac ? event.metaKey : event.ctrlKey;
+  }
+
+  /**
    * Handle key down event
    */
   private onKeyDown(event: KeyboardEvent) {
@@ -165,7 +177,7 @@ export class KeyboardHandler {
 
     // Check if this is a special key or has modifiers
     const specialKeycode = KEY_TO_KEYCODE[event.key];
-    const hasModifier = event.ctrlKey || event.altKey;
+    const hasModifier = this.hasPrimaryModifier(event) || event.altKey;
 
     if (specialKeycode !== undefined) {
       // Special keys always use INJECT_KEYCODE
@@ -182,7 +194,7 @@ export class KeyboardHandler {
         this.onKeycode(keycode, metastate, 'down');
         this.pressedKeys.set(event.key, keycode);
       }
-    } else if (event.key.length === 1 && !event.ctrlKey && !event.altKey) {
+    } else if (event.key.length === 1 && !this.hasPrimaryModifier(event) && !event.altKey) {
       // Regular character: buffer for INJECT_TEXT
       this.appendToTextBuffer(event.key);
     }
@@ -210,12 +222,14 @@ export class KeyboardHandler {
 
   /**
    * Build Android metastate from keyboard event
+   * On macOS, Command key maps to Ctrl for Android (Cmd+C -> Ctrl+C)
    */
   private buildMetastate(event: KeyboardEvent): number {
     let metastate = AMETA.NONE;
     if (event.shiftKey) metastate |= AMETA.SHIFT_ON;
     if (event.altKey) metastate |= AMETA.ALT_ON;
-    if (event.ctrlKey) metastate |= AMETA.CTRL_ON;
+    // Map Cmd (Mac) or Ctrl (others) to Android Ctrl
+    if (this.hasPrimaryModifier(event)) metastate |= AMETA.CTRL_ON;
     return metastate;
   }
 
