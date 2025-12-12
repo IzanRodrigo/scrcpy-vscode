@@ -461,6 +461,31 @@ export class ScrcpyConnection {
           continue;
         }
 
+        // Check for new codec metadata (sent on rotation/reconfiguration)
+        // Codec metadata: codec_id (4) + width (4) + height (4)
+        // H.264 codec_id = 0x68323634 ("h264")
+        if (buffer.length >= 12) {
+          const possibleCodecId = buffer.readUInt32BE(0);
+          if (possibleCodecId === 0x68323634) {
+            const newWidth = buffer.readUInt32BE(4);
+            const newHeight = buffer.readUInt32BE(8);
+
+            // Sanity check dimensions
+            if (newWidth > 0 && newWidth < 10000 && newHeight > 0 && newHeight < 10000) {
+              if (newWidth !== this.deviceWidth || newHeight !== this.deviceHeight) {
+                this.deviceWidth = newWidth;
+                this.deviceHeight = newHeight;
+                console.log(`Video reconfigured: ${this.deviceWidth}x${this.deviceHeight}`);
+                buffer = buffer.subarray(12);
+
+                // Notify webview of new dimensions
+                this.onVideoFrame(new Uint8Array(0), true, this.deviceWidth, this.deviceHeight);
+                continue;
+              }
+            }
+          }
+        }
+
         // Video packets: pts_flags (8) + packet_size (4) + data
         if (buffer.length < 12) break;
 

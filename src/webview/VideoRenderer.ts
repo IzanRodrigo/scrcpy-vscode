@@ -10,6 +10,7 @@ export class VideoRenderer {
   private ctx: CanvasRenderingContext2D | null = null;
   private decoder: VideoDecoder | null = null;
   private onStats: ((fps: number, frames: number) => void) | null;
+  private onDimensionsChanged: ((width: number, height: number) => void) | null;
 
   private width = 0;
   private height = 0;
@@ -25,18 +26,28 @@ export class VideoRenderer {
   private pendingConfig: Uint8Array | null = null;
   private codecConfigured = false;
   private isPaused = false;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
-    onStats: ((fps: number, frames: number) => void) | null
+    onStats: ((fps: number, frames: number) => void) | null,
+    onDimensionsChanged?: ((width: number, height: number) => void) | null
   ) {
     this.canvas = canvas;
     this.onStats = onStats;
+    this.onDimensionsChanged = onDimensionsChanged ?? null;
 
     // Check WebCodecs support
     if (typeof VideoDecoder === 'undefined') {
       console.error('WebCodecs API not supported');
       return;
+    }
+
+    // Observe container resize
+    const container = canvas.parentElement;
+    if (container) {
+      this.resizeObserver = new ResizeObserver(() => this.fitToContainer());
+      this.resizeObserver.observe(container);
     }
   }
 
@@ -51,8 +62,8 @@ export class VideoRenderer {
     this.canvas.width = width;
     this.canvas.height = height;
 
-    // Set CSS aspect-ratio so layout adapts to dimension changes (e.g., rotation)
-    this.canvas.style.aspectRatio = `${width} / ${height}`;
+    // Fit canvas to container while maintaining aspect ratio
+    this.fitToContainer();
 
     // Get 2D context for rendering
     this.ctx = this.canvas.getContext('2d');
@@ -62,7 +73,7 @@ export class VideoRenderer {
       frame.close();
     }
     this.pendingFrames = [];
-    this.pendingConfig = null;
+    // Don't clear pendingConfig - it may have just been set with new SPS for rotation
 
     // Reset FPS tracking
     this.frameCount = 0;
@@ -75,6 +86,28 @@ export class VideoRenderer {
     this.createDecoder();
 
     console.log(`Video configured: ${width}x${height}`);
+  }
+
+  /**
+   * Fit canvas to container width, adjusting height to maintain aspect ratio
+   */
+  private fitToContainer() {
+    if (this.width === 0 || this.height === 0) return;
+
+    const container = this.canvas.parentElement;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    if (rect.width === 0) return;
+
+    const aspectRatio = this.width / this.height;
+    const displayWidth = rect.width;
+    const displayHeight = displayWidth / aspectRatio;
+
+    console.log(`fitToContainer: video=${this.width}x${this.height}, container=${rect.width}, display=${displayWidth}x${displayHeight}`);
+
+    this.canvas.style.width = `${displayWidth}px`;
+    this.canvas.style.height = `${displayHeight}px`;
   }
 
   /**
@@ -135,7 +168,14 @@ export class VideoRenderer {
       // Store config packet (SPS/PPS) to prepend to next keyframe
       // This matches sc_packet_merger behavior in scrcpy
       this.pendingConfig = data;
-      console.log('Stored config packet:', data.length, 'bytes');
+
+      // Parse SPS for dimensions (rotation sends new SPS with new dimensions)
+      const dims = this.parseSPSDimensions(data);
+      if (dims && (dims.width !== this.width || dims.height !== this.height)) {
+        console.log(`Dimensions changed: ${this.width}x${this.height} -> ${dims.width}x${dims.height}`);
+        this.configure(dims.width, dims.height);
+        this.onDimensionsChanged?.(dims.width, dims.height);
+      }
       return;
     }
 
@@ -222,6 +262,124 @@ export class VideoRenderer {
       console.log('Codec configured successfully (Annex B mode)');
     } catch (error) {
       console.error('Failed to configure codec:', error);
+    }
+  }
+
+  /**
+   * Parse SPS to extract video dimensions
+   */
+  private parseSPSDimensions(config: Uint8Array): { width: number; height: number } | null {
+    // Find SPS NAL unit (type 7)
+    for (let i = 0; i < config.length - 4; i++) {
+      let offset = 0;
+      if (config[i] === 0 && config[i + 1] === 0 && config[i + 2] === 1) {
+        offset = 3;
+      } else if (config[i] === 0 && config[i + 1] === 0 && config[i + 2] === 0 && config[i + 3] === 1) {
+        offset = 4;
+      }
+
+      if (offset > 0) {
+        const nalType = config[i + offset] & 0x1F;
+        if (nalType === 7) {
+          // Found SPS, parse it
+          const spsStart = i + offset + 1;
+          return this.decodeSPSDimensions(config.subarray(spsStart));
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Decode SPS NAL unit to extract dimensions (simplified parser)
+   */
+  private decodeSPSDimensions(sps: Uint8Array): { width: number; height: number } | null {
+    try {
+      const reader = new BitReader(sps);
+
+      const profileIdc = reader.readBits(8);
+      reader.readBits(8); // constraint_set flags + reserved
+      reader.readBits(8); // level_idc
+
+      reader.readUE(); // seq_parameter_set_id
+
+      // High profile has additional fields
+      if (profileIdc === 100 || profileIdc === 110 || profileIdc === 122 ||
+          profileIdc === 244 || profileIdc === 44 || profileIdc === 83 ||
+          profileIdc === 86 || profileIdc === 118 || profileIdc === 128) {
+        const chromaFormatIdc = reader.readUE();
+        if (chromaFormatIdc === 3) {
+          reader.readBits(1); // separate_colour_plane_flag
+        }
+        reader.readUE(); // bit_depth_luma_minus8
+        reader.readUE(); // bit_depth_chroma_minus8
+        reader.readBits(1); // qpprime_y_zero_transform_bypass_flag
+        const seqScalingMatrixPresent = reader.readBits(1);
+        if (seqScalingMatrixPresent) {
+          const count = chromaFormatIdc !== 3 ? 8 : 12;
+          for (let i = 0; i < count; i++) {
+            if (reader.readBits(1)) { // seq_scaling_list_present_flag
+              this.skipScalingList(reader, i < 6 ? 16 : 64);
+            }
+          }
+        }
+      }
+
+      reader.readUE(); // log2_max_frame_num_minus4
+      const picOrderCntType = reader.readUE();
+      if (picOrderCntType === 0) {
+        reader.readUE(); // log2_max_pic_order_cnt_lsb_minus4
+      } else if (picOrderCntType === 1) {
+        reader.readBits(1); // delta_pic_order_always_zero_flag
+        reader.readSE(); // offset_for_non_ref_pic
+        reader.readSE(); // offset_for_top_to_bottom_field
+        const numRefFrames = reader.readUE();
+        for (let i = 0; i < numRefFrames; i++) {
+          reader.readSE(); // offset_for_ref_frame
+        }
+      }
+
+      reader.readUE(); // max_num_ref_frames
+      reader.readBits(1); // gaps_in_frame_num_value_allowed_flag
+
+      const picWidthInMbsMinus1 = reader.readUE();
+      const picHeightInMapUnitsMinus1 = reader.readUE();
+      const frameMbsOnlyFlag = reader.readBits(1);
+
+      if (!frameMbsOnlyFlag) {
+        reader.readBits(1); // mb_adaptive_frame_field_flag
+      }
+
+      reader.readBits(1); // direct_8x8_inference_flag
+
+      let cropLeft = 0, cropRight = 0, cropTop = 0, cropBottom = 0;
+      const frameCroppingFlag = reader.readBits(1);
+      if (frameCroppingFlag) {
+        cropLeft = reader.readUE();
+        cropRight = reader.readUE();
+        cropTop = reader.readUE();
+        cropBottom = reader.readUE();
+      }
+
+      // Calculate dimensions
+      const width = (picWidthInMbsMinus1 + 1) * 16 - (cropLeft + cropRight) * 2;
+      const height = (picHeightInMapUnitsMinus1 + 1) * 16 * (2 - frameMbsOnlyFlag) - (cropTop + cropBottom) * 2 * (2 - frameMbsOnlyFlag);
+
+      return { width, height };
+    } catch {
+      return null;
+    }
+  }
+
+  private skipScalingList(reader: BitReader, size: number): void {
+    let lastScale = 8;
+    let nextScale = 8;
+    for (let i = 0; i < size; i++) {
+      if (nextScale !== 0) {
+        const deltaScale = reader.readSE();
+        nextScale = (lastScale + deltaScale + 256) % 256;
+      }
+      lastScale = nextScale === 0 ? lastScale : nextScale;
     }
   }
 
@@ -334,6 +492,11 @@ export class VideoRenderer {
    * Dispose of resources
    */
   dispose() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
     if (this.decoder) {
       try {
         this.decoder.close();
@@ -348,5 +511,54 @@ export class VideoRenderer {
     }
     this.pendingFrames = [];
     this.pendingConfig = null;
+  }
+}
+
+/**
+ * Bit reader for parsing H.264 SPS (Exp-Golomb coded)
+ */
+class BitReader {
+  private data: Uint8Array;
+  private byteOffset = 0;
+  private bitOffset = 0;
+
+  constructor(data: Uint8Array) {
+    this.data = data;
+  }
+
+  readBits(count: number): number {
+    let result = 0;
+    for (let i = 0; i < count; i++) {
+      if (this.byteOffset >= this.data.length) {
+        throw new Error('End of data');
+      }
+      const bit = (this.data[this.byteOffset] >> (7 - this.bitOffset)) & 1;
+      result = (result << 1) | bit;
+      this.bitOffset++;
+      if (this.bitOffset === 8) {
+        this.bitOffset = 0;
+        this.byteOffset++;
+      }
+    }
+    return result;
+  }
+
+  // Unsigned Exp-Golomb
+  readUE(): number {
+    let leadingZeros = 0;
+    while (this.readBits(1) === 0) {
+      leadingZeros++;
+      if (leadingZeros > 31) throw new Error('Invalid UE');
+    }
+    if (leadingZeros === 0) return 0;
+    return (1 << leadingZeros) - 1 + this.readBits(leadingZeros);
+  }
+
+  // Signed Exp-Golomb
+  readSE(): number {
+    const value = this.readUE();
+    if (value === 0) return 0;
+    const sign = (value & 1) ? 1 : -1;
+    return sign * Math.ceil(value / 2);
   }
 }

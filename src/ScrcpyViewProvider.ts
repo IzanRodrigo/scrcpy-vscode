@@ -562,20 +562,20 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
     }
 
-    /* Canvas container - takes remaining space, centers content */
+    /* Canvas container - takes remaining space */
     .canvas-container {
       flex: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       overflow: hidden;
+      overflow-y: auto;
       position: relative;
     }
 
     .device-canvas {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
+      display: block;
       touch-action: none;
       cursor: pointer;
       background: #000;
@@ -768,7 +768,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         <button class="control-btn" data-keycode="187" title="Recent Apps">&#x25A0;</button>
       </div>
       <div class="toolbar-group toolbar-right">
-        <button class="control-btn" id="rotate-btn" title="Rotate">&#x21BA;</button>
+        <button class="control-btn" id="rotate-btn" title="Change to landscape"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg></button>
         <button class="control-btn" data-keycode="26" title="Power">&#x23FB;</button>
       </div>
     </div>

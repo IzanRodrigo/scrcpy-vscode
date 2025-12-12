@@ -54,6 +54,8 @@ let activeDeviceId: string | null = null;
 let showStats = false;
 let isMuted = false;
 let muteBtn: HTMLElement | null = null;
+let rotateBtn: HTMLElement | null = null;
+let isPortrait = true;
 
 /**
  * Initialize the WebView
@@ -165,7 +167,7 @@ function initialize() {
   }
 
   // Rotate button
-  const rotateBtn = document.getElementById('rotate-btn');
+  rotateBtn = document.getElementById('rotate-btn');
   if (rotateBtn) {
     rotateBtn.addEventListener('click', () => {
       vscode.postMessage({ type: 'rotateDevice' });
@@ -174,6 +176,25 @@ function initialize() {
 
   vscode.postMessage({ type: 'ready' });
   console.log('WebView initialized');
+}
+
+/**
+ * Update rotate button icon based on current orientation
+ */
+function updateRotateButton(width: number, height: number): void {
+  if (!rotateBtn) return;
+
+  isPortrait = height > width;
+
+  if (isPortrait) {
+    // Show landscape icon (horizontal phone)
+    rotateBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg>`;
+    rotateBtn.title = 'Change to landscape';
+  } else {
+    // Show portrait icon (vertical phone)
+    rotateBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 18h.01"/></svg>`;
+    rotateBtn.title = 'Change to portrait';
+  }
 }
 
 /**
@@ -244,8 +265,9 @@ function handleVideoFrame(message: {
   if (message.width && message.height) {
     session.videoRenderer.configure(message.width, message.height);
 
-    // Show canvas if this is the active device
+    // Update rotate button based on orientation
     if (message.deviceId === activeDeviceId) {
+      updateRotateButton(message.width, message.height);
       session.canvas.classList.remove('hidden');
     }
 
@@ -377,12 +399,21 @@ function createDeviceSession(
   canvasContainer.appendChild(canvas);
 
   // Create video renderer
-  const videoRenderer = new VideoRenderer(canvas, (fps, frames) => {
-    if (deviceId === activeDeviceId && showStats) {
-      statsElement.textContent = `${fps} FPS | ${frames} frames`;
-      statsElement.classList.remove('hidden');
+  const videoRenderer = new VideoRenderer(
+    canvas,
+    (fps, frames) => {
+      if (deviceId === activeDeviceId && showStats) {
+        statsElement.textContent = `${fps} FPS | ${frames} frames`;
+        statsElement.classList.remove('hidden');
+      }
+    },
+    (width, height) => {
+      // Update rotate button when dimensions change (from SPS parsing on rotation)
+      if (deviceId === activeDeviceId) {
+        updateRotateButton(width, height);
+      }
     }
-  });
+  );
   videoRenderer.setStatsEnabled(showStats);
 
   // Create audio renderer
