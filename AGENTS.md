@@ -232,4 +232,5 @@ No automated tests yet. Manual testing:
     - Click screenshot button (📷) in toolbar next to rotate button
     - Verify save dialog appears with default filename (screenshot-TIMESTAMP.png)
     - Choose a location and verify PNG file is saved correctly
-    - Open the saved image and verify it matches the device screen
+    - Open the saved image and verify it has the device's original resolution (not scaled)
+    - Verify PNG quality is lossless (no video compression artifacts)

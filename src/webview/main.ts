@@ -214,26 +214,13 @@ function toggleMute(): void {
 }
 
 /**
- * Take a screenshot of the active device canvas
+ * Take a screenshot of the active device (via ADB screencap for original resolution)
  */
 function takeScreenshot(): void {
   if (!activeDeviceId) return;
 
-  const session = sessions.get(activeDeviceId);
-  if (!session || session.canvas.width === 0 || session.canvas.height === 0) {
-    console.warn('Cannot take screenshot: no active canvas or canvas has no dimensions');
-    return;
-  }
-
-  // Get PNG data URL from canvas
-  const dataUrl = session.canvas.toDataURL('image/png');
-
-  // Send to extension for saving
-  vscode.postMessage({
-    type: 'screenshot',
-    deviceId: activeDeviceId,
-    dataUrl
-  });
+  // Send request to extension - screenshot is taken via ADB for original quality
+  vscode.postMessage({ type: 'screenshot' });
 }
 
 /**

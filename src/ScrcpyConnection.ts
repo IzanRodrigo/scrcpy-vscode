@@ -926,6 +926,41 @@ export class ScrcpyConnection {
   }
 
   /**
+   * Take a screenshot using ADB screencap (original resolution, lossless)
+   */
+  async takeScreenshot(): Promise<Buffer> {
+    if (!this.deviceSerial) {
+      throw new Error('No device connected');
+    }
+
+    return new Promise((resolve, reject) => {
+      const args = ['-s', this.deviceSerial!, 'exec-out', 'screencap', '-p'];
+      const proc = spawn('adb', args);
+
+      const chunks: Buffer[] = [];
+      proc.stdout.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        console.error('screencap stderr:', data.toString());
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve(Buffer.concat(chunks));
+        } else {
+          reject(new Error(`screencap failed with code ${code}`));
+        }
+      });
+
+      proc.on('error', (err) => {
+        reject(new Error(`Failed to run screencap: ${err.message}`));
+      });
+    });
+  }
+
+  /**
    * Disconnect from device
    */
   async disconnect(): Promise<void> {

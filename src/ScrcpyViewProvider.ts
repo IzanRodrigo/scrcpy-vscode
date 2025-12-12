@@ -236,7 +236,6 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     keycode?: number;
     text?: string;
     metastate?: number;
-    dataUrl?: string;
   }) {
     switch (message.type) {
       case 'touch':
@@ -300,9 +299,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         break;
 
       case 'screenshot':
-        if (message.dataUrl) {
-          await this._saveScreenshot(message.dataUrl);
-        }
+        await this._takeAndSaveScreenshot();
         break;
 
       case 'toggleAudio':
@@ -457,37 +454,41 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async _saveScreenshot(dataUrl: string): Promise<void> {
-    // Generate default filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const defaultFilename = `screenshot-${timestamp}.png`;
-
-    // Show save dialog
-    const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file(defaultFilename),
-      filters: {
-        'PNG Image': ['png']
-      },
-      title: 'Save Screenshot'
-    });
-
-    if (!uri) {
-      return; // User cancelled
+  private async _takeAndSaveScreenshot(): Promise<void> {
+    if (!this._deviceManager) {
+      vscode.window.showErrorMessage('No device connected');
+      return;
     }
 
     try {
-      // Convert data URL to buffer
-      const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
+      // Take screenshot from device (original resolution, lossless PNG)
+      const pngBuffer = await this._deviceManager.takeScreenshot();
+
+      // Generate default filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const defaultFilename = `screenshot-${timestamp}.png`;
+
+      // Show save dialog
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(defaultFilename),
+        filters: {
+          'PNG Image': ['png']
+        },
+        title: 'Save Screenshot'
+      });
+
+      if (!uri) {
+        return; // User cancelled
+      }
 
       // Write to file
-      await vscode.workspace.fs.writeFile(uri, buffer);
+      await vscode.workspace.fs.writeFile(uri, pngBuffer);
 
       // Show success notification
       vscode.window.showInformationMessage(`Screenshot saved to ${uri.fsPath}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to save screenshot: ${message}`);
+      vscode.window.showErrorMessage(`Failed to take screenshot: ${message}`);
     }
   }
 

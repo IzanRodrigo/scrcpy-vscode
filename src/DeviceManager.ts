@@ -210,6 +210,13 @@ class DeviceSession {
   rotateDevice(): void {
     this.connection?.rotateDevice();
   }
+
+  async takeScreenshot(): Promise<Buffer> {
+    if (!this.connection) {
+      throw new Error('No connection');
+    }
+    return this.connection.takeScreenshot();
+  }
 }
 
 /**
@@ -463,6 +470,17 @@ export class DeviceManager {
    */
   rotateDevice(): void {
     this.getActiveSession()?.rotateDevice();
+  }
+
+  /**
+   * Take screenshot from active device (original resolution, lossless PNG)
+   */
+  async takeScreenshot(): Promise<Buffer> {
+    const session = this.getActiveSession();
+    if (!session) {
+      throw new Error('No active device');
+    }
+    return session.takeScreenshot();
   }
 
   /**
