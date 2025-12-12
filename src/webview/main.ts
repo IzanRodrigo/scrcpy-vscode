@@ -110,8 +110,9 @@ function handleVideoFrame(message: {
   if (message.width && message.height) {
     // Initial config with dimensions
     videoRenderer.configure(message.width, message.height);
+    // Show canvas and control toolbar when connected
+    canvas.classList.remove('hidden');
     hideStatus();
-    // Show control toolbar when connected
     if (controlToolbar) {
       controlToolbar.classList.remove('hidden');
     }
@@ -145,7 +146,8 @@ function showError(text: string) {
   statusTextElement.textContent = text;
   statusTextElement.classList.add('error');
 
-  // Hide control toolbar when disconnected
+  // Hide canvas and control toolbar when disconnected
+  canvas.classList.add('hidden');
   if (controlToolbar) {
     controlToolbar.classList.add('hidden');
   }

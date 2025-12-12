@@ -266,6 +266,10 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       border-radius: 4px;
     }
 
+    #screen.hidden {
+      display: none;
+    }
+
     .status {
       position: absolute;
       top: 50%;
@@ -275,10 +279,13 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
       font-size: 13px;
       text-align: center;
-      padding: 16px;
+      padding: 24px;
       max-width: 90%;
       white-space: pre-wrap;
       word-wrap: break-word;
+      background: var(--vscode-editor-background, #1e1e1e);
+      border-radius: 8px;
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
     }
 
     .status.hidden {
@@ -286,13 +293,13 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }
 
     .status .spinner {
-      width: 24px;
-      height: 24px;
-      border: 2px solid var(--vscode-input-border, #333);
+      width: 64px;
+      height: 64px;
+      border: 4px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
       border-top-color: var(--vscode-focusBorder, #0078d4);
       border-radius: 50%;
       animation: spin 1s linear infinite;
-      margin: 0 auto 12px;
+      margin: 0 auto 16px;
     }
 
     @keyframes spin {
@@ -391,7 +398,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <div class="container">
-    <canvas id="screen"></canvas>
+    <canvas id="screen" class="hidden"></canvas>
     <div id="control-toolbar" class="control-toolbar hidden">
       <div class="toolbar-group toolbar-left">
         <button class="control-btn" data-keycode="25" title="Volume Down">Vol-</button>
