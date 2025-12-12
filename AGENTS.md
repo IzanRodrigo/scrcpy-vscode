@@ -47,6 +47,7 @@ src/
   - Listens for config changes and auto-reconnects
   - Handles message passing between extension and webview
   - Generates HTML with tab bar (top), canvas container (center), control toolbar (bottom)
+  - Handles view lifecycle (move between sidebars, dispose/recreate) using `AbortController` to cancel stale async operations
 
 - **DeviceManager.ts**: Multi-device session management
   - Manages multiple `ScrcpyConnection` instances (one per device)
@@ -171,8 +172,9 @@ Audio support is implemented using:
 No automated tests yet. Manual testing:
 1. Connect Android device(s)
 2. Run extension (F5)
-3. Click the Android Device icon in the Activity Bar (left sidebar)
+3. Click the scrcpy icon in the Activity Bar (left sidebar)
 4. Drag the view to the Secondary Sidebar (right side) for optimal placement
+   - The view can be moved between primary and secondary sidebars without issues
 5. Verify video displays and touch works
 6. Verify control buttons work (Volume, Back, Home, Recent Apps, Power)
    - Quick tap: should trigger single key press

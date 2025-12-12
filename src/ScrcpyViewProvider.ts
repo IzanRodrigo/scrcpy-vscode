@@ -9,6 +9,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   private _deviceManager?: DeviceManager;
   private _disposables: vscode.Disposable[] = [];
   private _isDisposed = false;
+  private _abortController?: AbortController;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -17,10 +18,24 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
   ): void {
-    // Clean up any previous disposables (resolveWebviewView can be called multiple times)
+    // Clean up any previous state (resolveWebviewView can be called multiple times when view is moved)
     while (this._disposables.length) {
       this._disposables.pop()?.dispose();
     }
+
+    // Abort any pending async operations from the previous view
+    this._abortController?.abort();
+    this._abortController = new AbortController();
+
+    // Disconnect any existing device manager (may still exist if view was moved, not disposed)
+    if (this._deviceManager) {
+      this._deviceManager.stopDeviceMonitoring();
+      this._deviceManager.disconnectAll().catch(() => {});
+      this._deviceManager = undefined;
+    }
+
+    // Reset disposed state
+    this._isDisposed = false;
 
     this._view = webviewView;
 
@@ -40,9 +55,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       this._disposables
     );
 
-    // Handle view disposal
+    // Handle view disposal - only clean up if this is still the current view
+    // (prevents race condition when view is moved between sidebars)
     webviewView.onDidDispose(() => {
-      this._onViewDisposed().catch(console.error);
+      if (this._view === webviewView) {
+        this._onViewDisposed().catch(console.error);
+      }
     }, null, this._disposables);
 
     // Auto-connect when view becomes visible
@@ -177,10 +195,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async _autoConnectFirstDevice() {
+    const signal = this._abortController?.signal;
     if (!this._deviceManager) return;
 
     try {
       const devices = await this._deviceManager.getAvailableDevices();
+      if (signal?.aborted || !this._deviceManager) return;
       if (devices.length > 0) {
         await this._deviceManager.addDevice(devices[0]);
       } else {
@@ -190,6 +210,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         });
       }
     } catch (error) {
+      if (signal?.aborted || !this._deviceManager) return;
       const message = error instanceof Error ? error.message : String(error);
       this._view?.webview.postMessage({
         type: 'error',
@@ -329,9 +350,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async _showDevicePicker(): Promise<void> {
+    const signal = this._abortController?.signal;
     if (!this._deviceManager) return;
 
     const devices = await this._deviceManager.getAvailableDevices();
+    if (signal?.aborted) return;
 
     if (devices.length === 0) {
       vscode.window.showErrorMessage('No Android devices found. Please connect a device and enable USB debugging.');
@@ -357,7 +380,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       placeHolder: 'Select a device to connect'
     });
 
-    if (selected && this._deviceManager) {
+    if (selected && !signal?.aborted) {
+      if (!this._deviceManager) return;
       try {
         await this._deviceManager.addDevice(selected.device);
       } catch {
@@ -376,6 +400,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
   private async _onViewDisposed() {
     this._isDisposed = true;
+    this._abortController?.abort();
     await this._disconnect();
     while (this._disposables.length) {
       const disposable = this._disposables.pop();
@@ -417,7 +442,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
                  style-src ${webview.cspSource} 'unsafe-inline';
                  img-src ${webview.cspSource} data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Android Device</title>
+  <title>scrcpy</title>
   <style>
     * {
       margin: 0;

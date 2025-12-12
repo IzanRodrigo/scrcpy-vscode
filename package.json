@@ -234,7 +234,7 @@
       "activitybar": [
         {
           "id": "scrcpy",
-          "title": "Android Device",
+          "title": "scrcpy",
           "icon": "media/android.svg"
         }
       ]
@@ -246,7 +246,7 @@
           "id": "scrcpy.deviceView",
           "name": "Screen",
           "icon": "media/android.svg",
-          "contextualTitle": "Android Device"
+          "contextualTitle": "scrcpy"
         }
       ]
     }

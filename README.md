@@ -40,7 +40,7 @@ Display and control your Android device screen directly within VS Code, similar 
 
 1. Connect your Android device(s) via USB (or enable wireless debugging)
 2. Verify ADB sees your device: `adb devices`
-3. Click the **Android Device** icon in the Activity Bar (left sidebar)
+3. Click the **scrcpy** icon in the Activity Bar (left sidebar)
 4. The first device automatically connects and appears in the sidebar view
 5. **Tip**: Drag the view to the Secondary Sidebar (right side) for optimal placement - VS Code remembers this position
 
