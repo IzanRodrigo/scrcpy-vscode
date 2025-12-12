@@ -228,3 +228,8 @@ No automated tests yet. Manual testing:
     - Verify touch input still works correctly after rotation
     - Toggle `scrcpy.lockVideoOrientation` setting and reconnect
     - Rotate device physically and verify video stays fixed when lock is enabled
+14. Test screenshots:
+    - Click screenshot button (📷) in toolbar next to rotate button
+    - Verify save dialog appears with default filename (screenshot-TIMESTAMP.png)
+    - Choose a location and verify PNG file is saved correctly
+    - Open the saved image and verify it matches the device screen

@@ -236,6 +236,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     keycode?: number;
     text?: string;
     metastate?: number;
+    dataUrl?: string;
   }) {
     switch (message.type) {
       case 'touch':
@@ -295,6 +296,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       case 'rotateDevice':
         if (this._deviceManager) {
           this._deviceManager.rotateDevice();
+        }
+        break;
+
+      case 'screenshot':
+        if (message.dataUrl) {
+          await this._saveScreenshot(message.dataUrl);
         }
         break;
 
@@ -448,6 +455,40 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       type: 'status',
       message: 'Disconnected'
     });
+  }
+
+  private async _saveScreenshot(dataUrl: string): Promise<void> {
+    // Generate default filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const defaultFilename = `screenshot-${timestamp}.png`;
+
+    // Show save dialog
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(defaultFilename),
+      filters: {
+        'PNG Image': ['png']
+      },
+      title: 'Save Screenshot'
+    });
+
+    if (!uri) {
+      return; // User cancelled
+    }
+
+    try {
+      // Convert data URL to buffer
+      const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      // Write to file
+      await vscode.workspace.fs.writeFile(uri, buffer);
+
+      // Show success notification
+      vscode.window.showInformationMessage(`Screenshot saved to ${uri.fsPath}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to save screenshot: ${message}`);
+    }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
@@ -784,6 +825,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         <button class="control-btn" data-keycode="187" title="Recent Apps">&#x25A0;</button>
       </div>
       <div class="toolbar-group toolbar-right">
+        <button class="control-btn" id="screenshot-btn" title="Take screenshot"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
         <button class="control-btn" id="rotate-btn" title="Change to landscape"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg></button>
         <button class="control-btn" data-keycode="26" title="Power">&#x23FB;</button>
       </div>

@@ -55,6 +55,7 @@ let showStats = false;
 let isMuted = false;
 let muteBtn: HTMLElement | null = null;
 let rotateBtn: HTMLElement | null = null;
+let screenshotBtn: HTMLElement | null = null;
 let isPortrait = true;
 
 /**
@@ -174,6 +175,14 @@ function initialize() {
     });
   }
 
+  // Screenshot button
+  screenshotBtn = document.getElementById('screenshot-btn');
+  if (screenshotBtn) {
+    screenshotBtn.addEventListener('click', () => {
+      takeScreenshot();
+    });
+  }
+
   vscode.postMessage({ type: 'ready' });
   console.log('WebView initialized');
 }
@@ -202,6 +211,29 @@ function updateRotateButton(width: number, height: number): void {
  */
 function toggleMute(): void {
   vscode.postMessage({ type: 'toggleAudio' });
+}
+
+/**
+ * Take a screenshot of the active device canvas
+ */
+function takeScreenshot(): void {
+  if (!activeDeviceId) return;
+
+  const session = sessions.get(activeDeviceId);
+  if (!session || session.canvas.width === 0 || session.canvas.height === 0) {
+    console.warn('Cannot take screenshot: no active canvas or canvas has no dimensions');
+    return;
+  }
+
+  // Get PNG data URL from canvas
+  const dataUrl = session.canvas.toDataURL('image/png');
+
+  // Send to extension for saving
+  vscode.postMessage({
+    type: 'screenshot',
+    deviceId: activeDeviceId,
+    dataUrl
+  });
 }
 
 /**
