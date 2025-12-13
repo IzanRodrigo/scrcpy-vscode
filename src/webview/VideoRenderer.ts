@@ -170,11 +170,6 @@ export class VideoRenderer {
       return;
     }
 
-    // Drop non-config frames when paused (keep config for codec)
-    if (this.isPaused && !isConfig) {
-      return;
-    }
-
     if (isConfig) {
       // Store config packet (SPS/PPS) to prepend to next keyframe
       // This matches sc_packet_merger behavior in scrcpy
@@ -446,8 +441,14 @@ export class VideoRenderer {
    * Handle decoded video frame
    */
   private handleDecodedFrame(frame: VideoFrame) {
-    this.pendingFrames.push(frame);
     this.totalFrames++;
+
+    if (this.isPaused) {
+      frame.close();
+      return;
+    }
+
+    this.pendingFrames.push(frame);
 
     // Update FPS counter only if stats are enabled
     if (this.statsEnabled && this.onStats) {
