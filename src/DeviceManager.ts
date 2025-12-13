@@ -448,14 +448,18 @@ export class DeviceManager {
 
     this.sessions.set(session.deviceId, session);
 
-    // If first device or no active device, make it active
-    if (this.activeDeviceId === null) {
-      this.activeDeviceId = session.deviceId;
-      session.isActive = true;
-    } else {
-      // New device starts paused
-      session.isPaused = true;
+    // Pause the currently active session (if any)
+    if (this.activeDeviceId) {
+      const oldSession = this.sessions.get(this.activeDeviceId);
+      if (oldSession) {
+        oldSession.isActive = false;
+        oldSession.pause();
+      }
     }
+
+    // Make the new device active
+    this.activeDeviceId = session.deviceId;
+    session.isActive = true;
 
     this.notifySessionListChanged();
 
