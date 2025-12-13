@@ -55,10 +55,15 @@ export class VideoRenderer {
    * Configure renderer with video dimensions
    */
   configure(width: number, height: number) {
+    // Skip if dimensions unchanged (avoids clearing canvas content)
+    if (this.width === width && this.height === height && this.decoder) {
+      return;
+    }
+
     this.width = width;
     this.height = height;
 
-    // Set canvas size (drawing buffer)
+    // Set canvas size (drawing buffer) - this clears the canvas
     this.canvas.width = width;
     this.canvas.height = height;
 
