@@ -346,17 +346,10 @@ export class ScrcpyConnection {
   }
 
   /**
-   * Ensure scrcpy server JAR exists on device
+   * Ensure scrcpy server JAR exists on device and matches client version
+   * Always pushes the server to avoid version mismatch issues
    */
   private async ensureServerOnDevice(): Promise<void> {
-    // Check if server exists
-    try {
-      await this.execAdb('shell ls /data/local/tmp/scrcpy-server.jar');
-      return; // Server exists
-    } catch {
-      // Server doesn't exist, need to push it
-    }
-
     // Common locations for scrcpy-server on different platforms
     const possiblePaths = [
       // User-configured path (highest priority)
