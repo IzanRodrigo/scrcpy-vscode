@@ -32,9 +32,10 @@ Display and control your Android device screen directly within VS Code, similar 
    - Linux: `sudo apt install scrcpy`
    - Windows: Download from [scrcpy releases](https://github.com/Genymobile/scrcpy/releases)
 
-3. **Android device connected** via USB with USB debugging enabled
+3. **Android device connected** via USB or WiFi with debugging enabled
    - Enable Developer Options: Settings > About Phone > Tap "Build number" 7 times
    - Enable USB Debugging: Settings > Developer Options > USB Debugging
+   - For wireless: Enable Wireless debugging (Android 11+) or use `adb tcpip 5555`
 
 ## Usage
 
@@ -52,12 +53,33 @@ Display and control your Android device screen directly within VS Code, similar 
 - Close a device connection by clicking the **×** on its tab
 - Only the active tab streams video (saves resources)
 
+### WiFi Connection (Wireless Debugging)
+
+Connect to devices wirelessly using Android's Wireless Debugging feature:
+
+**Android 11+ (with pairing):**
+1. On your device: Settings > Developer Options > Wireless debugging > Enable
+2. Tap "Pair device with pairing code" to get the pairing address and code
+3. In VS Code: Run "Scrcpy: Connect to Device over WiFi" or click the WiFi icon (📡) in the view title
+4. Select "Pair new device (Android 11+)"
+5. Enter the pairing address (IP:port from the pairing dialog)
+6. Enter the 6-digit pairing code
+7. After pairing succeeds, enter the connection address from the main Wireless debugging screen
+
+**Legacy method (Android 10 and below):**
+1. Connect device via USB and run: `adb tcpip 5555`
+2. Disconnect USB cable
+3. Run "Scrcpy: Connect to Device over WiFi"
+4. Select "Connect to paired device"
+5. Enter device IP address (e.g., `192.168.1.100:5555`)
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `Scrcpy: Start` | Focus the view and connect to device |
-| `Scrcpy: Stop` | Disconnect from device |
+| `Scrcpy: Start Device Mirroring` | Focus the view and connect to device |
+| `Scrcpy: Stop Device Mirroring` | Disconnect from device |
+| `Scrcpy: Connect to Device over WiFi` | Connect to a device over WiFi (supports Android 11+ pairing) |
 | `Scrcpy: Open Settings` | Open extension settings |
 
 ## Settings
@@ -79,6 +101,7 @@ Click the **gear icon** in the scrcpy view toolbar to access settings. Changes a
 | `scrcpy.autoReconnect` | `true` | Automatically attempt to reconnect when connection is lost |
 | `scrcpy.reconnectRetries` | `2` | Number of reconnection attempts (1/2/3/5) |
 | `scrcpy.lockVideoOrientation` | `false` | Lock video orientation to current rotation (disables auto-rotate) |
+| `scrcpy.showStats` | `false` | Show FPS and frame count statistics overlay |
 
 ## Architecture
 
@@ -307,7 +330,7 @@ npm run watch
 - [x] ~~Text/keyboard input~~ ✅ Implemented (click canvas to enable, supports modifiers)
 - [x] ~~Audio forwarding~~ ✅ Implemented (Opus via opus-decoder WASM library)
 - [x] ~~Screen rotation handling~~ ✅ Implemented (rotate button + lock orientation setting)
-- [ ] Wireless ADB support
+- [x] ~~Wireless ADB support~~ ✅ Implemented (Android 11+ pairing + legacy WiFi connection)
 
 ## Requirements
 
