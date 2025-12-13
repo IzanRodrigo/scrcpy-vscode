@@ -359,7 +359,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         break;
 
       case 'openSettings':
-        vscode.commands.executeCommand('workbench.action.openSettings', '@id:scrcpy*');
+        vscode.commands.executeCommand('workbench.action.openSettings', '@ext:izan.scrcpy-vscode');
         break;
 
       case 'browseScrcpyPath':
