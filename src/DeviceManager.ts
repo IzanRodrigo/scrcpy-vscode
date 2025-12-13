@@ -1,5 +1,5 @@
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI } from './ScrcpyConnection';
-import { exec, execSync } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 
 /**
  * Device information
@@ -269,6 +269,60 @@ export class DeviceManager {
 
         resolve(devices);
       });
+    });
+  }
+
+  /**
+   * Pair with a device over WiFi using Android 11+ Wireless Debugging
+   * @param address The pairing address (IP:port) from "Pair device with pairing code"
+   * @param pairingCode The 6-digit pairing code
+   */
+  async pairWifi(address: string, pairingCode: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Use spawn to handle the interactive pairing process
+      const adb = spawn('adb', ['pair', address]);
+
+      let stdout = '';
+      let stderr = '';
+      let pairingCodeSent = false;
+
+      adb.stdout.on('data', (data: Buffer) => {
+        const output = data.toString();
+        stdout += output;
+
+        // When ADB prompts for the pairing code, send it
+        if (!pairingCodeSent && output.toLowerCase().includes('enter pairing code')) {
+          adb.stdin.write(pairingCode + '\n');
+          pairingCodeSent = true;
+        }
+      });
+
+      adb.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      adb.on('close', (code: number) => {
+        const output = (stdout + stderr).toLowerCase();
+
+        if (code === 0 && (output.includes('successfully paired') || output.includes('paired to'))) {
+          resolve();
+        } else if (output.includes('failed') || output.includes('error') || code !== 0) {
+          reject(new Error(stderr || stdout || 'Pairing failed'));
+        } else {
+          // Assume success if no explicit failure
+          resolve();
+        }
+      });
+
+      adb.on('error', (error: Error) => {
+        reject(error);
+      });
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        adb.kill();
+        reject(new Error('Pairing timed out'));
+      }, 30000);
     });
   }
 

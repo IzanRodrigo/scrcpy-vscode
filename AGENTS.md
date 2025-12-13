@@ -55,6 +55,7 @@ src/
   - `addDevice()`: Connects to a specific device by serial
   - `removeDevice()`: Disconnects and removes a device session
   - `switchToDevice()`: Switches active device (pauses inactive, resumes active)
+  - `pairWifi()`: Pairs with a device using Android 11+ Wireless Debugging (`adb pair`)
   - `connectWifi()`: Connects to a device over WiFi using `adb connect`
   - `disconnectWifi()`: Disconnects a WiFi device using `adb disconnect`
   - Prevents duplicate device connections
@@ -239,13 +240,21 @@ No automated tests yet. Manual testing:
     - Verify PNG has device's original resolution (not scaled) and lossless quality
     - Test `scrcpy.screenshotSavePath` setting to change default save location
     - Test `scrcpy.screenshotShowSaveDialog` setting to enable save dialog
-15. Test WiFi connection:
+15. Test WiFi connection (Android 11+ with pairing):
     - Enable wireless debugging on your Android device (Settings > Developer options > Wireless debugging)
-    - Note the IP address and port shown on the device
+    - Tap "Pair device with pairing code" to get the pairing address and code
     - Run command "Scrcpy: Connect to Device over WiFi" or click the WiFi icon in the view title
-    - Enter the device IP address (e.g., 192.168.1.100 or 192.168.1.100:5555)
-    - Verify connection progress notification appears
+    - Select "Pair new device (Android 11+)"
+    - Enter the pairing address (IP:port shown in the pairing dialog)
+    - Enter the 6-digit pairing code
+    - Verify pairing success notification appears
+    - Enter the connection address from the main Wireless debugging screen (different from pairing address)
     - Verify device connects and video displays
     - Verify touch and control buttons work over WiFi
-    - Disconnect device USB cable and verify WiFi connection continues working
-    - Test reconnection if WiFi connection drops
+16. Test WiFi connection (legacy or already paired):
+    - For devices already paired, or using legacy `adb tcpip 5555`
+    - Run command "Scrcpy: Connect to Device over WiFi"
+    - Select "Connect to paired device"
+    - Enter the device IP address and port (e.g., 192.168.1.100:5555)
+    - Verify connection progress notification appears
+    - Verify device connects and video displays

@@ -384,22 +384,160 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
    * Show WiFi connection dialog and connect to device
    */
   public async connectWifi(): Promise<void> {
-    // Step 1: Get IP address from user
+    // Ask user which connection method to use
+    const method = await vscode.window.showQuickPick(
+      [
+        {
+          label: '$(key) Pair new device (Android 11+)',
+          description: 'Use pairing code from Wireless debugging',
+          value: 'pair'
+        },
+        {
+          label: '$(plug) Connect to paired device',
+          description: 'Device was previously paired or uses legacy ADB WiFi',
+          value: 'connect'
+        }
+      ],
+      {
+        placeHolder: 'How do you want to connect?',
+        title: 'Connect to Device over WiFi'
+      }
+    );
+
+    if (!method) {
+      return; // User cancelled
+    }
+
+    if (method.value === 'pair') {
+      await this._pairWifiDevice();
+    } else {
+      await this._connectWifiDevice();
+    }
+  }
+
+  /**
+   * Pair with a new device using Android 11+ Wireless Debugging
+   */
+  private async _pairWifiDevice(): Promise<void> {
+    // Step 1: Get pairing address (IP:port from Wireless debugging > Pair device)
+    const pairingAddress = await vscode.window.showInputBox({
+      title: 'Pair Device (Step 1/2)',
+      prompt: 'Enter the pairing address from "Pair device with pairing code"',
+      placeHolder: '192.168.1.100:37000',
+      validateInput: (value) => {
+        if (!value) {
+          return 'Pairing address is required';
+        }
+        const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}:\d+$/;
+        if (!ipPortRegex.test(value)) {
+          return 'Enter address as IP:port (e.g., 192.168.1.100:37000)';
+        }
+        return undefined;
+      }
+    });
+
+    if (!pairingAddress) {
+      return;
+    }
+
+    // Step 2: Get pairing code
+    const pairingCode = await vscode.window.showInputBox({
+      title: 'Pair Device (Step 2/2)',
+      prompt: 'Enter the 6-digit pairing code',
+      placeHolder: '123456',
+      validateInput: (value) => {
+        if (!value) {
+          return 'Pairing code is required';
+        }
+        if (!/^\d{6}$/.test(value)) {
+          return 'Pairing code must be 6 digits';
+        }
+        return undefined;
+      }
+    });
+
+    if (!pairingCode) {
+      return;
+    }
+
+    // Initialize device manager if not already
+    if (!this._deviceManager) {
+      this._initializeAndConnect();
+    }
+
+    if (!this._deviceManager) {
+      vscode.window.showErrorMessage('Failed to initialize device manager');
+      return;
+    }
+
+    // Pair the device
+    const pairResult = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Pairing with ${pairingAddress}...`,
+        cancellable: false
+      },
+      async () => {
+        try {
+          await this._deviceManager!.pairWifi(pairingAddress, pairingCode);
+          return true;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          vscode.window.showErrorMessage(`Pairing failed: ${message}`);
+          return false;
+        }
+      }
+    );
+
+    if (!pairResult) {
+      return;
+    }
+
+    vscode.window.showInformationMessage('Device paired successfully! Now connecting...');
+
+    // After pairing, prompt for the connection address
+    // The connection port is different from the pairing port
+    const ip = pairingAddress.split(':')[0];
+    const connectAddress = await vscode.window.showInputBox({
+      title: 'Connect to Paired Device',
+      prompt: 'Enter the connection address shown in Wireless debugging (not the pairing address)',
+      placeHolder: `${ip}:5555`,
+      value: ip,
+      validateInput: (value) => {
+        if (!value) {
+          return 'Connection address is required';
+        }
+        const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
+        if (!ipPortRegex.test(value)) {
+          return 'Enter address as IP or IP:port';
+        }
+        return undefined;
+      }
+    });
+
+    if (!connectAddress) {
+      return;
+    }
+
+    await this._connectWifiDeviceWithAddress(connectAddress);
+  }
+
+  /**
+   * Connect to an already paired or legacy WiFi device
+   */
+  private async _connectWifiDevice(): Promise<void> {
     const ipAddress = await vscode.window.showInputBox({
       title: 'Connect to Device over WiFi',
-      prompt: 'Enter the IP address of your Android device',
-      placeHolder: '192.168.1.100',
+      prompt: 'Enter the IP address (and port) of your Android device',
+      placeHolder: '192.168.1.100:5555',
       validateInput: (value) => {
-        // Basic IP validation
         if (!value) {
           return 'IP address is required';
         }
-        // Allow IP with optional port
         const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
         if (!ipPortRegex.test(value)) {
           return 'Enter a valid IP address (e.g., 192.168.1.100 or 192.168.1.100:5555)';
         }
-        // Validate IP octets
         const ipPart = value.split(':')[0];
         const octets = ipPart.split('.').map(Number);
         if (octets.some(o => o < 0 || o > 255)) {
@@ -410,20 +548,27 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     });
 
     if (!ipAddress) {
-      return; // User cancelled
+      return;
     }
 
+    await this._connectWifiDeviceWithAddress(ipAddress);
+  }
+
+  /**
+   * Connect to a WiFi device with the given address
+   */
+  private async _connectWifiDeviceWithAddress(address: string): Promise<void> {
     // Parse IP and port
     let ip: string;
     let port: number;
 
-    if (ipAddress.includes(':')) {
-      const parts = ipAddress.split(':');
+    if (address.includes(':')) {
+      const parts = address.split(':');
       ip = parts[0];
       port = parseInt(parts[1], 10);
     } else {
-      ip = ipAddress;
-      port = 5555; // Default ADB WiFi port
+      ip = address;
+      port = 5555;
     }
 
     // Initialize device manager if not already
