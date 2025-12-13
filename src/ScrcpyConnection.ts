@@ -37,7 +37,6 @@ export interface ScrcpyConfig {
   showTouches: boolean;
   audio: boolean;
   clipboardSync: boolean;
-  clipboardPollInterval: number;
   autoConnect: boolean;
   autoReconnect: boolean;
   reconnectRetries: number;
@@ -73,7 +72,6 @@ export class ScrcpyConnection {
   private _audioPacketCount = 0;
 
   // Clipboard sync state
-  private clipboardPollInterval: NodeJS.Timeout | null = null;
   private lastHostClipboard = '';
   private lastDeviceClipboard = '';
   private clipboardSequence = 0n;
@@ -912,16 +910,6 @@ export class ScrcpyConnection {
   }
 
   /**
-   * Stop clipboard sync (legacy - now a no-op)
-   */
-  private stopClipboardSync(): void {
-    if (this.clipboardPollInterval) {
-      clearInterval(this.clipboardPollInterval);
-      this.clipboardPollInterval = null;
-    }
-  }
-
-  /**
    * Take a screenshot using ADB screencap (original resolution, lossless)
    */
   async takeScreenshot(): Promise<Buffer> {
@@ -962,8 +950,7 @@ export class ScrcpyConnection {
   async disconnect(): Promise<void> {
     this.isConnected = false;
 
-    // Stop clipboard sync and reset state
-    this.stopClipboardSync();
+    // Reset clipboard state
     this.lastHostClipboard = '';
     this.lastDeviceClipboard = '';
     this.clipboardSequence = 0n;
