@@ -526,14 +526,14 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
         <button class="control-btn" data-keycode="24" title="${volumeUp}">Vol+</button>
       </div>
       <div class="toolbar-group toolbar-center">
-        <button class="control-btn" data-keycode="4" title="${back}">&#x25C0;</button>
-        <button class="control-btn" data-keycode="3" title="${home}">&#x25CF;</button>
-        <button class="control-btn" data-keycode="187" title="${recentApps}">&#x25A0;</button>
+        <button class="control-btn" data-keycode="4" title="${back}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20,4 L20,20 L4,12 Z"/></svg></button>
+        <button class="control-btn" data-keycode="3" title="${home}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg></button>
+        <button class="control-btn" data-keycode="187" title="${recentApps}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14"/></svg></button>
       </div>
       <div class="toolbar-group toolbar-right">
         <button class="control-btn" id="screenshot-btn" title="${takeScreenshot}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-        <button class="control-btn" id="rotate-btn" title="${changeToLandscape}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg></button>
-        <button class="control-btn" data-keycode="26" title="${power}">&#x23FB;</button>
+        <button class="control-btn" id="rotate-btn" title="${changeToLandscape}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9,1H3A2,2 0 0,0 1,3V16A2,2 0 0,0 3,18H9A2,2 0 0,0 11,16V3A2,2 0 0,0 9,1M9,15H3V3H9V15M21,13H13V15H21V21H9V20H6V21A2,2 0 0,0 8,23H21A2,2 0 0,0 23,21V15A2,2 0 0,0 21,13M23,10L19,8L20.91,7.09C19.74,4.31 17,2.5 14,2.5V1A9,9 0 0,1 23,10Z"/></svg></button>
+        <button class="control-btn" data-keycode="26" title="${power}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16.56,5.44L15.11,6.89C16.84,7.94 18,9.83 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12C6,9.83 7.16,7.94 8.88,6.88L7.44,5.44C5.36,6.88 4,9.28 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12C20,9.28 18.64,6.88 16.56,5.44M13,3H11V13H13"/></svg></button>
       </div>
     </div>
   </div>
