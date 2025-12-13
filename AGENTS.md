@@ -55,6 +55,8 @@ src/
   - `addDevice()`: Connects to a specific device by serial
   - `removeDevice()`: Disconnects and removes a device session
   - `switchToDevice()`: Switches active device (pauses inactive, resumes active)
+  - `connectWifi()`: Connects to a device over WiFi using `adb connect`
+  - `disconnectWifi()`: Disconnects a WiFi device using `adb disconnect`
   - Prevents duplicate device connections
   - Notifies webview of session list changes
   - Auto-connect: Polls for new devices every 2s and connects automatically
@@ -237,3 +239,13 @@ No automated tests yet. Manual testing:
     - Verify PNG has device's original resolution (not scaled) and lossless quality
     - Test `scrcpy.screenshotSavePath` setting to change default save location
     - Test `scrcpy.screenshotShowSaveDialog` setting to enable save dialog
+15. Test WiFi connection:
+    - Enable wireless debugging on your Android device (Settings > Developer options > Wireless debugging)
+    - Note the IP address and port shown on the device
+    - Run command "Scrcpy: Connect to Device over WiFi" or click the WiFi icon in the view title
+    - Enter the device IP address (e.g., 192.168.1.100 or 192.168.1.100:5555)
+    - Verify connection progress notification appears
+    - Verify device connects and video displays
+    - Verify touch and control buttons work over WiFi
+    - Disconnect device USB cable and verify WiFi connection continues working
+    - Test reconnection if WiFi connection drops

@@ -31,12 +31,17 @@ export function activate(context: vscode.ExtensionContext) {
     provider?.stop();
   });
 
+  // Register WiFi connection command
+  const wifiCommand = vscode.commands.registerCommand('scrcpy.connectWifi', () => {
+    provider?.connectWifi();
+  });
+
   // Register settings command
   const settingsCommand = vscode.commands.registerCommand('scrcpy.openSettings', () => {
     vscode.commands.executeCommand('workbench.action.openSettings', '@ext:izan.scrcpy-vscode');
   });
 
-  context.subscriptions.push(startCommand, stopCommand, settingsCommand);
+  context.subscriptions.push(startCommand, stopCommand, wifiCommand, settingsCommand);
 }
 
 export async function deactivate() {

@@ -1,5 +1,5 @@
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI } from './ScrcpyConnection';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 
 /**
  * Device information
@@ -268,6 +268,76 @@ export class DeviceManager {
         }
 
         resolve(devices);
+      });
+    });
+  }
+
+  /**
+   * Connect to a device over WiFi using ADB
+   * @param ipAddress The IP address of the device
+   * @param port The port (default 5555)
+   * @returns The device info if connection was successful
+   */
+  async connectWifi(ipAddress: string, port: number = 5555): Promise<DeviceInfo> {
+    const address = `${ipAddress}:${port}`;
+
+    return new Promise((resolve, reject) => {
+      exec(`adb connect ${address}`, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message));
+          return;
+        }
+
+        // Check if connection was successful
+        // Output is typically "connected to ip:port" or "already connected to ip:port"
+        const output = stdout.toLowerCase();
+        if (output.includes('connected to') || output.includes('already connected')) {
+          // Get device model name
+          try {
+            const modelOutput = execSync(`adb -s ${address} shell getprop ro.product.model`, {
+              timeout: 5000,
+              encoding: 'utf8'
+            }).trim();
+
+            resolve({
+              serial: address,
+              name: modelOutput || address,
+              model: modelOutput || undefined
+            });
+          } catch {
+            // If we can't get the model, just use the address
+            resolve({
+              serial: address,
+              name: address,
+              model: undefined
+            });
+          }
+        } else if (output.includes('failed') || output.includes('unable') || output.includes('cannot')) {
+          reject(new Error(`Failed to connect: ${stdout.trim()}`));
+        } else {
+          // Unknown response, try to connect anyway
+          resolve({
+            serial: address,
+            name: address,
+            model: undefined
+          });
+        }
+      });
+    });
+  }
+
+  /**
+   * Disconnect a WiFi device from ADB
+   * @param address The IP:port address of the device
+   */
+  async disconnectWifi(address: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      exec(`adb disconnect ${address}`, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message));
+          return;
+        }
+        resolve();
       });
     });
   }

@@ -240,6 +240,11 @@
         "title": "Scrcpy: Stop Device Mirroring"
       },
       {
+        "command": "scrcpy.connectWifi",
+        "title": "Scrcpy: Connect to Device over WiFi",
+        "icon": "$(radio-tower)"
+      },
+      {
         "command": "scrcpy.openSettings",
         "title": "Scrcpy: Open Settings",
         "icon": "$(gear)"
@@ -247,6 +252,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "scrcpy.connectWifi",
+          "when": "view == scrcpy.deviceView",
+          "group": "navigation"
+        },
         {
           "command": "scrcpy.openSettings",
           "when": "view == scrcpy.deviceView",

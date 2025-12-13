@@ -380,6 +380,86 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /**
+   * Show WiFi connection dialog and connect to device
+   */
+  public async connectWifi(): Promise<void> {
+    // Step 1: Get IP address from user
+    const ipAddress = await vscode.window.showInputBox({
+      title: 'Connect to Device over WiFi',
+      prompt: 'Enter the IP address of your Android device',
+      placeHolder: '192.168.1.100',
+      validateInput: (value) => {
+        // Basic IP validation
+        if (!value) {
+          return 'IP address is required';
+        }
+        // Allow IP with optional port
+        const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
+        if (!ipPortRegex.test(value)) {
+          return 'Enter a valid IP address (e.g., 192.168.1.100 or 192.168.1.100:5555)';
+        }
+        // Validate IP octets
+        const ipPart = value.split(':')[0];
+        const octets = ipPart.split('.').map(Number);
+        if (octets.some(o => o < 0 || o > 255)) {
+          return 'Invalid IP address: each octet must be between 0 and 255';
+        }
+        return undefined;
+      }
+    });
+
+    if (!ipAddress) {
+      return; // User cancelled
+    }
+
+    // Parse IP and port
+    let ip: string;
+    let port: number;
+
+    if (ipAddress.includes(':')) {
+      const parts = ipAddress.split(':');
+      ip = parts[0];
+      port = parseInt(parts[1], 10);
+    } else {
+      ip = ipAddress;
+      port = 5555; // Default ADB WiFi port
+    }
+
+    // Initialize device manager if not already
+    if (!this._deviceManager) {
+      this._initializeAndConnect();
+    }
+
+    if (!this._deviceManager) {
+      vscode.window.showErrorMessage('Failed to initialize device manager');
+      return;
+    }
+
+    // Show progress notification
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Connecting to ${ip}:${port}...`,
+        cancellable: false
+      },
+      async () => {
+        try {
+          // Connect via ADB
+          const deviceInfo = await this._deviceManager!.connectWifi(ip, port);
+
+          // Now add the device to the session
+          await this._deviceManager!.addDevice(deviceInfo);
+
+          vscode.window.showInformationMessage(`Connected to ${deviceInfo.name} over WiFi`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          vscode.window.showErrorMessage(`WiFi connection failed: ${message}`);
+        }
+      }
+    );
+  }
+
   private async _showDevicePicker(): Promise<void> {
     const signal = this._abortController?.signal;
     if (!this._deviceManager) return;
