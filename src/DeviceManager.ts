@@ -55,6 +55,11 @@ class DeviceSession {
   private isDisposed = false;
   private static readonly RETRY_DELAY_MS = 1500;
 
+  // Store last video dimensions and config for replay on resume
+  private lastWidth = 0;
+  private lastHeight = 0;
+  private lastConfigData: Uint8Array | null = null;
+
   constructor(
     deviceInfo: DeviceInfo,
     private videoFrameCallback: VideoFrameCallback,
@@ -72,6 +77,15 @@ class DeviceSession {
   async connect(): Promise<void> {
     this.connection = new ScrcpyConnection(
       (data, isConfig, width, height) => {
+        // Store dimensions and config data for replay on resume
+        if (width && height) {
+          this.lastWidth = width;
+          this.lastHeight = height;
+        }
+        if (isConfig) {
+          this.lastConfigData = data;
+        }
+
         // Only forward frames if not paused
         if (!this.isPaused) {
           this.videoFrameCallback(this.deviceId, data, isConfig, width, height);
@@ -159,6 +173,17 @@ class DeviceSession {
 
   resume(): void {
     this.isPaused = false;
+
+    // Replay stored config and dimensions so the renderer can initialize
+    if (this.lastWidth && this.lastHeight) {
+      // Send config packet first if we have one
+      if (this.lastConfigData) {
+        this.videoFrameCallback(this.deviceId, this.lastConfigData, true, this.lastWidth, this.lastHeight);
+      } else {
+        // Send empty frame with dimensions to trigger renderer configuration
+        this.videoFrameCallback(this.deviceId, new Uint8Array(0), false, this.lastWidth, this.lastHeight);
+      }
+    }
   }
 
   async disconnect(): Promise<void> {
