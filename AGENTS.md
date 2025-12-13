@@ -60,7 +60,7 @@ src/
   - `disconnectWifi()`: Disconnects a WiFi device using `adb disconnect`
   - Prevents duplicate device connections
   - Notifies webview of session list changes
-  - Auto-connect: Polls for new devices every 2s and connects automatically
+  - Auto-connect: Polls for new USB devices every 2s and connects automatically (WiFi devices excluded)
   - Auto-reconnect: Configurable retries (1-5) with 1.5s delay on unexpected disconnect
   - `takeScreenshot()`: Delegates to active session's connection for screenshot capture
 

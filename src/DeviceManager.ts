@@ -701,7 +701,18 @@ export class DeviceManager {
   }
 
   /**
+   * Check if a device serial represents a WiFi connection (IP:port format)
+   */
+  private isWifiDevice(serial: string): boolean {
+    // WiFi devices have format like "192.168.1.100:5555" or include IP addresses
+    // Also match mDNS format like "adb-XXXXX._adb-tls-connect._tcp"
+    return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/.test(serial) ||
+           serial.includes('._adb-tls-connect._tcp');
+  }
+
+  /**
    * Check for newly connected devices and auto-connect
+   * Only auto-connects USB devices, not WiFi/network devices
    */
   private async checkForNewDevices(): Promise<void> {
     if (!this.config.autoConnect) return;
@@ -711,8 +722,13 @@ export class DeviceManager {
 
     // Find new devices (present now but not known before)
     for (const device of devices) {
+      // Skip WiFi/network devices - auto-connect is only for USB
+      if (this.isWifiDevice(device.serial)) {
+        continue;
+      }
+
       if (!this.knownDeviceSerials.has(device.serial) && !this.isDeviceConnected(device.serial)) {
-        // New device detected - auto-connect
+        // New USB device detected - auto-connect
         // Clear any error state by sending status before connecting
         this.statusCallback('', `Connecting to ${device.name}...`);
 
@@ -727,8 +743,9 @@ export class DeviceManager {
     }
 
     // Remove devices that are no longer present (unplugged)
+    // But only for USB devices - keep WiFi devices in known list
     for (const serial of Array.from(this.knownDeviceSerials)) {
-      if (!currentSerials.has(serial)) {
+      if (!currentSerials.has(serial) && !this.isWifiDevice(serial)) {
         this.knownDeviceSerials.delete(serial);
       }
     }
