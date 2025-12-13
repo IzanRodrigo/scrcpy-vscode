@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -94,30 +95,24 @@ export class ScrcpyConnection {
    * Connect to ADB daemon and select a device
    */
   async connect(): Promise<void> {
-    this.onStatus('Connecting to ADB daemon...');
+    this.onStatus(vscode.l10n.t('Connecting to ADB daemon...'));
 
     const devices = await this.getDeviceList();
 
     if (devices.length === 0) {
-      throw new Error(
-        'No Android devices found.\n\n' +
-        'Please ensure:\n' +
-        '1. Device is connected via USB\n' +
-        '2. USB debugging is enabled\n' +
-        '3. ADB is authorized on the device'
-      );
+      throw new Error(vscode.l10n.t('No Android devices found.\n\nPlease ensure:\n1. Device is connected via USB\n2. USB debugging is enabled\n3. ADB is authorized on the device'));
     }
 
     // Use target serial if specified, otherwise first device
     if (this.targetSerial) {
       if (!devices.includes(this.targetSerial)) {
-        throw new Error(`Device ${this.targetSerial} not found or not authorized`);
+        throw new Error(vscode.l10n.t('Device {0} not found or not authorized', this.targetSerial));
       }
       this.deviceSerial = this.targetSerial;
     } else {
       this.deviceSerial = devices[0];
     }
-    this.onStatus(`Found device: ${this.deviceSerial}`);
+    this.onStatus(vscode.l10n.t('Found device: {0}', this.deviceSerial));
   }
 
   /**
@@ -128,10 +123,7 @@ export class ScrcpyConnection {
       exec('adb devices', (error, stdout, stderr) => {
         if (error) {
           reject(new Error(
-            'Failed to run "adb devices".\n\n' +
-            'Please ensure ADB is installed and in your PATH.\n' +
-            'Install via: brew install android-platform-tools (macOS)\n' +
-            'Or download from: https://developer.android.com/studio/releases/platform-tools'
+            vscode.l10n.t('Failed to run "adb devices".\n\nPlease ensure ADB is installed and in your PATH.\nInstall via: brew install android-platform-tools (macOS)\nOr download from: https://developer.android.com/studio/releases/platform-tools')
           ));
           return;
         }
@@ -156,14 +148,14 @@ export class ScrcpyConnection {
    */
   async startScrcpy(): Promise<void> {
     if (!this.deviceSerial) {
-      throw new Error('No device connected');
+      throw new Error(vscode.l10n.t('No device connected'));
     }
 
-    this.onStatus('Starting scrcpy server...');
+    this.onStatus(vscode.l10n.t('Starting scrcpy server...'));
 
     // Get installed scrcpy version
     const scrcpyVersion = await this.getScrcpyVersion();
-    this.onStatus(`Using scrcpy ${scrcpyVersion}`);
+    this.onStatus(vscode.l10n.t('Using scrcpy {0}', scrcpyVersion));
 
     // Ensure scrcpy server exists on device
     await this.ensureServerOnDevice();
@@ -185,7 +177,7 @@ export class ScrcpyConnection {
     const connectionPromise = new Promise<{ videoSocket: net.Socket; controlSocket: net.Socket; audioSocket: net.Socket | null }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         server.close();
-        reject(new Error('Timeout waiting for device connection. The server may have failed to start.'));
+        reject(new Error(vscode.l10n.t('Timeout waiting for device connection. The server may have failed to start.')));
       }, 15000);
 
       const sockets: net.Socket[] = [];
@@ -260,15 +252,15 @@ export class ScrcpyConnection {
         this.isConnected = false;
         // Report as error so reconnect button appears
         if (this.onError) {
-          this.onError('Server disconnected');
+          this.onError(vscode.l10n.t('Server disconnected'));
         } else {
-          this.onStatus('Server disconnected');
+          this.onStatus(vscode.l10n.t('Server disconnected'));
         }
       }
     });
 
     // Wait for device to connect
-    this.onStatus('Waiting for device to connect...');
+    this.onStatus(vscode.l10n.t('Waiting for device to connect...'));
 
     try {
       const { videoSocket, controlSocket, audioSocket } = await connectionPromise;
@@ -276,7 +268,7 @@ export class ScrcpyConnection {
 
       this.isConnected = true;
       this.controlSocket = controlSocket;
-      this.onStatus('Connected! Receiving video stream...');
+      this.onStatus(vscode.l10n.t('Connected! Receiving video stream...'));
 
       // Turn screen off if configured
       if (this.config.screenOff) {
@@ -325,12 +317,7 @@ export class ScrcpyConnection {
       exec(`"${scrcpyCmd}" --version`, (error, stdout) => {
         if (error) {
           reject(new Error(
-            'Failed to get scrcpy version.\n\n' +
-            'Please ensure scrcpy is installed:\n' +
-            '- macOS: brew install scrcpy\n' +
-            '- Linux: sudo apt install scrcpy\n' +
-            '- Windows: scoop install scrcpy\n\n' +
-            'Or set the scrcpy path in settings.'
+            vscode.l10n.t('Failed to get scrcpy version.\n\nPlease ensure scrcpy is installed:\n- macOS: brew install scrcpy\n- Linux: sudo apt install scrcpy\n- Windows: scoop install scrcpy\n\nOr set the scrcpy path in settings.')
           ));
           return;
         }
@@ -340,7 +327,7 @@ export class ScrcpyConnection {
         if (match) {
           resolve(match[1]);
         } else {
-          reject(new Error('Could not parse scrcpy version'));
+          reject(new Error(vscode.l10n.t('Could not parse scrcpy version')));
         }
       });
     });
@@ -379,17 +366,10 @@ export class ScrcpyConnection {
     }
 
     if (!serverPath) {
-      throw new Error(
-        'scrcpy-server not found.\n\n' +
-        'Please install scrcpy first:\n' +
-        '- macOS: brew install scrcpy\n' +
-        '- Linux: sudo apt install scrcpy\n' +
-        '- Windows: scoop install scrcpy\n\n' +
-        'Or download from: https://github.com/Genymobile/scrcpy/releases'
-      );
+      throw new Error(vscode.l10n.t('scrcpy-server not found.\n\nPlease install scrcpy first:\n- macOS: brew install scrcpy\n- Linux: sudo apt install scrcpy\n- Windows: scoop install scrcpy\n\nOr download from: https://github.com/Genymobile/scrcpy/releases'));
     }
 
-    this.onStatus('Pushing scrcpy server to device...');
+    this.onStatus(vscode.l10n.t('Pushing scrcpy server to device...'));
     await this.execAdb(`push "${serverPath}" /data/local/tmp/scrcpy-server.jar`);
   }
 
@@ -506,9 +486,9 @@ export class ScrcpyConnection {
       this.isConnected = false;
       // Report as error (not status) so reconnect button appears
       if (wasConnected && this.onError) {
-        this.onError('Disconnected from device');
+        this.onError(vscode.l10n.t('Disconnected from device'));
       } else {
-        this.onStatus('Disconnected from device');
+        this.onStatus(vscode.l10n.t('Disconnected from device'));
       }
     });
 
@@ -914,7 +894,7 @@ export class ScrcpyConnection {
    */
   async installApk(filePath: string): Promise<void> {
     if (!this.deviceSerial) {
-      throw new Error('No device connected');
+      throw new Error(vscode.l10n.t('No device connected'));
     }
     await this.execAdb(`install -r "${filePath}"`);
   }
@@ -924,7 +904,7 @@ export class ScrcpyConnection {
    */
   async pushFile(filePath: string, destPath: string = '/sdcard/Download/'): Promise<void> {
     if (!this.deviceSerial) {
-      throw new Error('No device connected');
+      throw new Error(vscode.l10n.t('No device connected'));
     }
     await this.execAdb(`push "${filePath}" "${destPath}"`);
   }
@@ -934,7 +914,7 @@ export class ScrcpyConnection {
    */
   async takeScreenshot(): Promise<Buffer> {
     if (!this.deviceSerial) {
-      throw new Error('No device connected');
+      throw new Error(vscode.l10n.t('No device connected'));
     }
 
     return new Promise((resolve, reject) => {
@@ -954,12 +934,12 @@ export class ScrcpyConnection {
         if (code === 0) {
           resolve(Buffer.concat(chunks));
         } else {
-          reject(new Error(`screencap failed with code ${code}`));
+          reject(new Error(vscode.l10n.t('screencap failed with code {0}', code ?? -1)));
         }
       });
 
       proc.on('error', (err) => {
-        reject(new Error(`Failed to run screencap: ${err.message}`));
+        reject(new Error(vscode.l10n.t('Failed to run screencap: {0}', err.message)));
       });
     });
   }

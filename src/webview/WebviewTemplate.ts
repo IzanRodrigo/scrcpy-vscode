@@ -7,6 +7,41 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
   const nonce = getNonce();
 
+  // Localized strings
+  const connectingToDevice = vscode.l10n.t('Connecting to device...');
+  const dropFilesHere = vscode.l10n.t('Drop files here');
+  const dropFilesHint = vscode.l10n.t('APK files will be installed, other files copied to Downloads');
+  const installing = vscode.l10n.t('Installing...');
+  const addDevice = vscode.l10n.t('Add Device');
+  const disableAudio = vscode.l10n.t('Disable audio forwarding');
+  const volumeDown = vscode.l10n.t('Volume Down');
+  const volumeUp = vscode.l10n.t('Volume Up');
+  const back = vscode.l10n.t('Back');
+  const home = vscode.l10n.t('Home');
+  const recentApps = vscode.l10n.t('Recent Apps');
+  const takeScreenshot = vscode.l10n.t('Take screenshot');
+  const changeToLandscape = vscode.l10n.t('Change to landscape');
+  const power = vscode.l10n.t('Power');
+
+  // Bundle of strings for dynamic updates in main.ts
+  const l10n = {
+    changeToPortrait: vscode.l10n.t('Change to portrait'),
+    changeToLandscape: vscode.l10n.t('Change to landscape'),
+    enableAudio: vscode.l10n.t('Enable audio forwarding'),
+    disableAudio: vscode.l10n.t('Disable audio forwarding'),
+    reconnecting: vscode.l10n.t('Reconnecting...'),
+    reconnect: vscode.l10n.t('Reconnect'),
+    noDevicesConnected: vscode.l10n.t('No devices connected'),
+    addDevice: vscode.l10n.t('Add Device'),
+    copyingToDevice: vscode.l10n.t('Copying to device...'),
+    installing: vscode.l10n.t('Installing...'),
+    installed: vscode.l10n.t('Installed'),
+    copiedToDownloads: vscode.l10n.t('Copied to Downloads'),
+    failed: vscode.l10n.t('Failed'),
+    failedToReadFile: vscode.l10n.t('Failed to read file'),
+    statsFormat: vscode.l10n.t('{0} FPS | {1} frames')
+  };
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -452,7 +487,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
   <div class="container">
     <!-- Tab bar - fixed at top -->
     <div id="tab-bar" class="tab-bar hidden">
-      <button class="tab-add" id="add-device-btn" title="Add Device">+</button>
+      <button class="tab-add" id="add-device-btn" title="${addDevice}">+</button>
     </div>
 
     <!-- Canvas container - centered -->
@@ -460,7 +495,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       <!-- Status overlay -->
       <div id="status" class="status">
         <div class="spinner"></div>
-        <div id="status-text">Connecting to device...</div>
+        <div id="status-text">${connectingToDevice}</div>
       </div>
       <!-- Stats display -->
       <div id="stats" class="stats hidden"></div>
@@ -468,8 +503,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       <div id="drop-zone" class="drop-zone">
         <div class="drop-zone-content">
           <div class="drop-zone-icon">&#128229;</div>
-          <div class="drop-zone-text">Drop files here</div>
-          <div class="drop-zone-hint">APK files will be installed, other files copied to Downloads</div>
+          <div class="drop-zone-text">${dropFilesHere}</div>
+          <div class="drop-zone-hint">${dropFilesHint}</div>
         </div>
       </div>
       <!-- File transfer overlay -->
@@ -477,7 +512,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
         <div class="file-transfer-content">
           <div id="file-transfer-spinner" class="file-transfer-spinner"></div>
           <div id="file-transfer-icon" class="file-transfer-icon" style="display: none;"></div>
-          <div id="file-transfer-text" class="file-transfer-text">Installing...</div>
+          <div id="file-transfer-text" class="file-transfer-text">${installing}</div>
           <div id="file-transfer-filename" class="file-transfer-filename"></div>
         </div>
       </div>
@@ -486,22 +521,25 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     <!-- Control toolbar - fixed at bottom -->
     <div id="control-toolbar" class="control-toolbar hidden">
       <div class="toolbar-group toolbar-left">
-        <button class="control-btn" id="mute-btn" title="Disable audio forwarding">&#x1F50A;</button>
-        <button class="control-btn" data-keycode="25" title="Volume Down">Vol-</button>
-        <button class="control-btn" data-keycode="24" title="Volume Up">Vol+</button>
+        <button class="control-btn" id="mute-btn" title="${disableAudio}">&#x1F50A;</button>
+        <button class="control-btn" data-keycode="25" title="${volumeDown}">Vol-</button>
+        <button class="control-btn" data-keycode="24" title="${volumeUp}">Vol+</button>
       </div>
       <div class="toolbar-group toolbar-center">
-        <button class="control-btn" data-keycode="4" title="Back">&#x25C0;</button>
-        <button class="control-btn" data-keycode="3" title="Home">&#x25CF;</button>
-        <button class="control-btn" data-keycode="187" title="Recent Apps">&#x25A0;</button>
+        <button class="control-btn" data-keycode="4" title="${back}">&#x25C0;</button>
+        <button class="control-btn" data-keycode="3" title="${home}">&#x25CF;</button>
+        <button class="control-btn" data-keycode="187" title="${recentApps}">&#x25A0;</button>
       </div>
       <div class="toolbar-group toolbar-right">
-        <button class="control-btn" id="screenshot-btn" title="Take screenshot"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-        <button class="control-btn" id="rotate-btn" title="Change to landscape"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg></button>
-        <button class="control-btn" data-keycode="26" title="Power">&#x23FB;</button>
+        <button class="control-btn" id="screenshot-btn" title="${takeScreenshot}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+        <button class="control-btn" id="rotate-btn" title="${changeToLandscape}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg></button>
+        <button class="control-btn" data-keycode="26" title="${power}">&#x23FB;</button>
       </div>
     </div>
   </div>
+  <script nonce="${nonce}">
+    window.l10n = ${JSON.stringify(l10n)};
+  </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

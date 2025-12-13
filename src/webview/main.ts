@@ -12,6 +12,29 @@ interface VSCodeAPI {
 
 declare function acquireVsCodeApi(): VSCodeAPI;
 
+// Declare global l10n object
+declare global {
+  interface Window {
+    l10n: {
+      changeToPortrait: string;
+      changeToLandscape: string;
+      enableAudio: string;
+      disableAudio: string;
+      reconnecting: string;
+      reconnect: string;
+      noDevicesConnected: string;
+      addDevice: string;
+      copyingToDevice: string;
+      installing: string;
+      installed: string;
+      copiedToDownloads: string;
+      failed: string;
+      failedToReadFile: string;
+      statsFormat: string;
+    };
+  }
+}
+
 /**
  * Session info from extension
  */
@@ -218,11 +241,11 @@ function updateRotateButton(width: number, height: number): void {
   if (isPortrait) {
     // Show landscape icon (horizontal phone)
     rotateBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M18 12h.01"/></svg>`;
-    rotateBtn.title = 'Change to landscape';
+    rotateBtn.title = window.l10n.changeToLandscape;
   } else {
     // Show portrait icon (vertical phone)
     rotateBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 18h.01"/></svg>`;
-    rotateBtn.title = 'Change to portrait';
+    rotateBtn.title = window.l10n.changeToPortrait;
   }
 }
 
@@ -271,7 +294,7 @@ function updateAudioState(audioEnabled: boolean): void {
   // Update button icon
   if (muteBtn) {
     muteBtn.innerHTML = audioEnabled ? '&#x1F50A;' : '&#x1F507;'; // 🔊 : 🔇
-    muteBtn.title = audioEnabled ? 'Disable audio forwarding' : 'Enable audio forwarding';
+    muteBtn.title = audioEnabled ? window.l10n.disableAudio : window.l10n.enableAudio;
   }
 }
 
@@ -482,7 +505,7 @@ function createDeviceSession(
     canvas,
     (fps, frames) => {
       if (deviceId === activeDeviceId && showStats) {
-        statsElement.textContent = `${fps} FPS | ${frames} frames`;
+        statsElement.textContent = window.l10n.statsFormat.replace('{0}', fps.toString()).replace('{1}', frames.toString());
         statsElement.classList.remove('hidden');
       }
     },
@@ -764,10 +787,10 @@ function showError(text: string) {
 
   const reconnectBtn = document.createElement('button');
   reconnectBtn.className = 'reconnect-btn';
-  reconnectBtn.textContent = 'Reconnect';
+  reconnectBtn.textContent = window.l10n.reconnect;
   reconnectBtn.onclick = () => {
     vscode.postMessage({ type: 'reconnect' });
-    showStatus('Reconnecting...');
+    showStatus(window.l10n.reconnecting);
   };
   btnContainer.appendChild(reconnectBtn);
 
@@ -785,7 +808,7 @@ function hideStatus() {
  * Show empty state (no devices connected)
  */
 function showEmptyState() {
-  statusTextElement.textContent = 'No devices connected';
+  statusTextElement.textContent = window.l10n.noDevicesConnected;
   statusTextElement.classList.remove('error');
   statusElement.classList.remove('hidden');
 
@@ -829,7 +852,7 @@ function showEmptyState() {
 
   const addBtn = document.createElement('button');
   addBtn.className = 'reconnect-btn';
-  addBtn.textContent = '+ Add Device';
+  addBtn.textContent = window.l10n.addDevice;
   addBtn.onclick = () => {
     vscode.postMessage({ type: 'showDevicePicker' });
   };
@@ -859,7 +882,7 @@ function showFileTransferProgress(filename: string, isApk: boolean): void {
   fileTransferIcon.style.display = 'none';
 
   // Set text
-  fileTransferText.textContent = isApk ? 'Installing...' : 'Copying to device...';
+  fileTransferText.textContent = isApk ? window.l10n.installing : window.l10n.copyingToDevice;
   fileTransferFilename.textContent = filename;
 }
 
@@ -883,7 +906,7 @@ function showFileTransferSuccess(filename: string, isApk: boolean): void {
   fileTransferIcon.textContent = '\u2714'; // ✔
 
   // Set text
-  fileTransferText.textContent = isApk ? 'Installed' : 'Copied to Downloads';
+  fileTransferText.textContent = isApk ? window.l10n.installed : window.l10n.copiedToDownloads;
   fileTransferFilename.textContent = filename;
 
   // Auto-hide after 2 seconds
@@ -912,7 +935,7 @@ function showFileTransferError(filename: string, error: string): void {
   fileTransferIcon.textContent = '\u2716'; // ✖
 
   // Set text
-  fileTransferText.textContent = 'Failed';
+  fileTransferText.textContent = window.l10n.failed;
   fileTransferFilename.textContent = error || filename;
 
   // Auto-hide after 3 seconds
@@ -967,7 +990,7 @@ async function transferFile(file: File): Promise<void> {
       });
     } catch (err) {
       console.error('Failed to read file:', err);
-      showFileTransferError(file.name, 'Failed to read file');
+      showFileTransferError(file.name, window.l10n.failedToReadFile);
     }
   }
 }

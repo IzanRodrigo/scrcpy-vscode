@@ -91,7 +91,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         if (needsReconnect && this._deviceManager) {
           this._view?.webview.postMessage({
             type: 'status',
-            message: 'Settings changed. Reconnecting...'
+            message: vscode.l10n.t('Settings changed. Reconnecting...')
           });
           this._deviceManager.updateConfig(this._getConfig());
           await this._deviceManager.disconnectAll();
@@ -212,7 +212,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       if (devices.length === 0) {
         this._view?.webview.postMessage({
           type: 'error',
-          message: 'No Android devices found.\n\nPlease connect a device and enable USB debugging.'
+          message: vscode.l10n.t('No Android devices found.\n\nPlease connect a device and enable USB debugging.')
         });
         return;
       }
@@ -232,7 +232,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       const message = error instanceof Error ? error.message : String(error);
       this._view?.webview.postMessage({
         type: 'error',
-        message: `Connection failed: ${message}`
+        message: vscode.l10n.t('Connection failed: {0}', message)
       });
     }
   }
@@ -380,7 +380,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           canSelectFiles: false,
           canSelectFolders: true,
           canSelectMany: false,
-          title: 'Select scrcpy installation folder'
+          title: vscode.l10n.t('Select scrcpy installation folder')
         });
         if (result && result[0]) {
           await vscode.workspace.getConfiguration('scrcpy').update('path', result[0].fsPath, true);
@@ -540,19 +540,19 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     const method = await vscode.window.showQuickPick(
       [
         {
-          label: '$(key) Pair new device (Android 11+)',
-          description: 'Use pairing code from Wireless debugging',
+          label: vscode.l10n.t('$(key) Pair new device (Android 11+)'),
+          description: vscode.l10n.t('Use pairing code from Wireless debugging'),
           value: 'pair'
         },
         {
-          label: '$(plug) Connect to paired device',
-          description: 'Device was previously paired or uses legacy ADB WiFi',
+          label: vscode.l10n.t('$(plug) Connect to paired device'),
+          description: vscode.l10n.t('Device was previously paired or uses legacy ADB WiFi'),
           value: 'connect'
         }
       ],
       {
-        placeHolder: 'How do you want to connect?',
-        title: 'Connect to Device over WiFi'
+        placeHolder: vscode.l10n.t('How do you want to connect?'),
+        title: vscode.l10n.t('Connect to Device over WiFi')
       }
     );
 
@@ -573,16 +573,16 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   private async _pairWifiDevice(): Promise<void> {
     // Step 1: Get pairing address (IP:port from Wireless debugging > Pair device)
     const pairingAddress = await vscode.window.showInputBox({
-      title: 'Pair Device (Step 1/2)',
-      prompt: 'Enter the pairing address from "Pair device with pairing code"',
+      title: vscode.l10n.t('Pair Device (Step 1/2)'),
+      prompt: vscode.l10n.t('Enter the pairing address from "Pair device with pairing code"'),
       placeHolder: '192.168.1.100:37000',
       validateInput: (value) => {
         if (!value) {
-          return 'Pairing address is required';
+          return vscode.l10n.t('Pairing address is required');
         }
         const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}:\d+$/;
         if (!ipPortRegex.test(value)) {
-          return 'Enter address as IP:port (e.g., 192.168.1.100:37000)';
+          return vscode.l10n.t('Enter address as IP:port (e.g., 192.168.1.100:37000)');
         }
         return undefined;
       }
@@ -594,15 +594,15 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
     // Step 2: Get pairing code
     const pairingCode = await vscode.window.showInputBox({
-      title: 'Pair Device (Step 2/2)',
-      prompt: 'Enter the 6-digit pairing code',
+      title: vscode.l10n.t('Pair Device (Step 2/2)'),
+      prompt: vscode.l10n.t('Enter the 6-digit pairing code'),
       placeHolder: '123456',
       validateInput: (value) => {
         if (!value) {
-          return 'Pairing code is required';
+          return vscode.l10n.t('Pairing code is required');
         }
         if (!/^\d{6}$/.test(value)) {
-          return 'Pairing code must be 6 digits';
+          return vscode.l10n.t('Pairing code must be 6 digits');
         }
         return undefined;
       }
@@ -618,7 +618,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (!this._deviceManager) {
-      vscode.window.showErrorMessage('Failed to initialize device manager');
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to initialize device manager'));
       return;
     }
 
@@ -626,7 +626,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     const pairResult = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Pairing with ${pairingAddress}...`,
+        title: vscode.l10n.t('Pairing with {0}...', pairingAddress),
         cancellable: false
       },
       async () => {
@@ -635,7 +635,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           return true;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          vscode.window.showErrorMessage(`Pairing failed: ${message}`);
+          vscode.window.showErrorMessage(vscode.l10n.t('Pairing failed: {0}', message));
           return false;
         }
       }
@@ -645,23 +645,23 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    vscode.window.showInformationMessage('Device paired successfully! Now connecting...');
+    vscode.window.showInformationMessage(vscode.l10n.t('Device paired successfully! Now connecting...'));
 
     // After pairing, prompt for the connection address
     // The connection port is different from the pairing port
     const ip = pairingAddress.split(':')[0];
     const connectAddress = await vscode.window.showInputBox({
-      title: 'Connect to Paired Device',
-      prompt: 'Enter the connection address shown in Wireless debugging (not the pairing address)',
+      title: vscode.l10n.t('Connect to Paired Device'),
+      prompt: vscode.l10n.t('Enter the connection address shown in Wireless debugging (not the pairing address)'),
       placeHolder: `${ip}:5555`,
       value: ip,
       validateInput: (value) => {
         if (!value) {
-          return 'Connection address is required';
+          return vscode.l10n.t('Connection address is required');
         }
         const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
         if (!ipPortRegex.test(value)) {
-          return 'Enter address as IP or IP:port';
+          return vscode.l10n.t('Enter address as IP or IP:port');
         }
         return undefined;
       }
@@ -679,21 +679,21 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
    */
   private async _connectWifiDevice(): Promise<void> {
     const ipAddress = await vscode.window.showInputBox({
-      title: 'Connect to Device over WiFi',
-      prompt: 'Enter the IP address (and port) of your Android device',
+      title: vscode.l10n.t('Connect to Device over WiFi'),
+      prompt: vscode.l10n.t('Enter the IP address (and port) of your Android device'),
       placeHolder: '192.168.1.100:5555',
       validateInput: (value) => {
         if (!value) {
-          return 'IP address is required';
+          return vscode.l10n.t('IP address is required');
         }
         const ipPortRegex = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
         if (!ipPortRegex.test(value)) {
-          return 'Enter a valid IP address (e.g., 192.168.1.100 or 192.168.1.100:5555)';
+          return vscode.l10n.t('Enter a valid IP address (e.g., 192.168.1.100 or 192.168.1.100:5555)');
         }
         const ipPart = value.split(':')[0];
         const octets = ipPart.split('.').map(Number);
         if (octets.some(o => o < 0 || o > 255)) {
-          return 'Invalid IP address: each octet must be between 0 and 255';
+          return vscode.l10n.t('Invalid IP address: each octet must be between 0 and 255');
         }
         return undefined;
       }
@@ -729,7 +729,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (!this._deviceManager) {
-      vscode.window.showErrorMessage('Failed to initialize device manager');
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to initialize device manager'));
       return;
     }
 
@@ -737,7 +737,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Connecting to ${ip}:${port}...`,
+        title: vscode.l10n.t('Connecting to {0}...', `${ip}:${port}`),
         cancellable: false
       },
       async () => {
@@ -748,10 +748,10 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           // Now add the device to the session
           await this._deviceManager!.addDevice(deviceInfo);
 
-          vscode.window.showInformationMessage(`Connected to ${deviceInfo.name} over WiFi`);
+          vscode.window.showInformationMessage(vscode.l10n.t('Connected to {0} over WiFi', deviceInfo.name));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          vscode.window.showErrorMessage(`WiFi connection failed: ${message}`);
+          vscode.window.showErrorMessage(vscode.l10n.t('WiFi connection failed: {0}', message));
         }
       }
     );
@@ -765,7 +765,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     if (signal?.aborted) return;
 
     if (devices.length === 0) {
-      vscode.window.showErrorMessage('No Android devices found. Please connect a device and enable USB debugging.');
+      vscode.window.showErrorMessage(vscode.l10n.t('No Android devices found. Please connect a device and enable USB debugging.'));
       return;
     }
 
@@ -773,7 +773,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     const availableDevices = devices.filter(d => !this._deviceManager!.isDeviceConnected(d.serial));
 
     if (availableDevices.length === 0) {
-      vscode.window.showInformationMessage('All available devices are already connected.');
+      vscode.window.showInformationMessage(vscode.l10n.t('All available devices are already connected.'));
       return;
     }
 
@@ -785,7 +785,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select a device to connect'
+      placeHolder: vscode.l10n.t('Select a device to connect')
     });
 
     if (selected && !signal?.aborted) {
@@ -829,7 +829,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     await this._disconnect();
     this._view?.webview.postMessage({
       type: 'status',
-      message: 'Disconnected'
+      message: vscode.l10n.t('Disconnected')
     });
   }
 
@@ -839,7 +839,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     };
 
     if (!this._deviceManager) {
-      vscode.window.showErrorMessage('No device connected');
+      vscode.window.showErrorMessage(vscode.l10n.t('No device connected'));
       notifyComplete();
       return;
     }
@@ -866,7 +866,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           filters: {
             'PNG Image': ['png']
           },
-          title: 'Save Screenshot'
+          title: vscode.l10n.t('Save Screenshot')
         });
 
         if (!uri) {
@@ -886,7 +886,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       await vscode.commands.executeCommand('vscode.open', uri);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to take screenshot: ${message}`);
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to take screenshot: {0}', message));
     } finally {
       notifyComplete();
     }

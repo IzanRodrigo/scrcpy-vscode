@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI } from './ScrcpyConnection';
 import { exec, execSync, spawn, ChildProcess } from 'child_process';
 
@@ -136,7 +137,7 @@ class DeviceSession {
       this.isReconnecting = true;
       this.retryCount++;
 
-      this.statusCallback(this.deviceId, `Reconnecting (attempt ${this.retryCount}/${maxRetries})...`);
+      this.statusCallback(this.deviceId, vscode.l10n.t('Reconnecting (attempt {0}/{1})...', this.retryCount, maxRetries));
 
       // Wait before reconnecting (gives ADB time to recover)
       await new Promise(resolve => setTimeout(resolve, DeviceSession.RETRY_DELAY_MS));
@@ -250,21 +251,21 @@ class DeviceSession {
 
   async takeScreenshot(): Promise<Buffer> {
     if (!this.connection) {
-      throw new Error('No connection');
+      throw new Error(vscode.l10n.t('No connection'));
     }
     return this.connection.takeScreenshot();
   }
 
   async installApk(filePath: string): Promise<void> {
     if (!this.connection) {
-      throw new Error('No connection');
+      throw new Error(vscode.l10n.t('No connection'));
     }
     await this.connection.installApk(filePath);
   }
 
   async pushFile(filePath: string, destPath?: string): Promise<void> {
     if (!this.connection) {
-      throw new Error('No connection');
+      throw new Error(vscode.l10n.t('No connection'));
     }
     await this.connection.pushFile(filePath, destPath);
   }
@@ -425,7 +426,7 @@ export class DeviceManager {
           // Provide helpful error message for common failure cases
           let errorMsg = stdout.trim();
           if (output.includes('connection refused') || output.includes('failed to connect')) {
-            errorMsg += '\n\nFor Android 11+, you need to pair the device first using "Pair new device".';
+            errorMsg += '\n\n' + vscode.l10n.t('For Android 11+, you need to pair the device first using "Pair new device".');
           }
           reject(new Error(errorMsg));
         } else {
@@ -462,7 +463,7 @@ export class DeviceManager {
   async addDevice(deviceInfo: DeviceInfo): Promise<string> {
     // Prevent duplicate connections
     if (this.isDeviceConnected(deviceInfo.serial)) {
-      throw new Error('Device already connected');
+      throw new Error(vscode.l10n.t('Device already connected'));
     }
 
     const session = new DeviceSession(
@@ -508,7 +509,7 @@ export class DeviceManager {
         }
       }
       this.notifySessionListChanged();
-      throw new Error('Failed to connect');
+      throw new Error(vscode.l10n.t('Failed to connect'));
     }
 
     return session.deviceId;
@@ -666,7 +667,7 @@ export class DeviceManager {
   async takeScreenshot(): Promise<Buffer> {
     const session = this.getActiveSession();
     if (!session) {
-      throw new Error('No active device');
+      throw new Error(vscode.l10n.t('No active device'));
     }
     return session.takeScreenshot();
   }
@@ -677,7 +678,7 @@ export class DeviceManager {
   async installApk(filePath: string): Promise<void> {
     const session = this.getActiveSession();
     if (!session) {
-      throw new Error('No active device');
+      throw new Error(vscode.l10n.t('No active device'));
     }
     await session.installApk(filePath);
   }
@@ -688,7 +689,7 @@ export class DeviceManager {
   async pushFile(filePath: string, destPath?: string): Promise<void> {
     const session = this.getActiveSession();
     if (!session) {
-      throw new Error('No active device');
+      throw new Error(vscode.l10n.t('No active device'));
     }
     await session.pushFile(filePath, destPath);
   }
@@ -865,7 +866,7 @@ export class DeviceManager {
           // Keep serial as name
         }
 
-        this.statusCallback('', `Connecting to ${device.name}...`);
+        this.statusCallback('', vscode.l10n.t('Connecting to {0}...', device.name));
 
         try {
           await this.addDevice(device);
