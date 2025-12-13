@@ -910,6 +910,26 @@ export class ScrcpyConnection {
   }
 
   /**
+   * Install an APK on the device
+   */
+  async installApk(filePath: string): Promise<void> {
+    if (!this.deviceSerial) {
+      throw new Error('No device connected');
+    }
+    await this.execAdb(`install -r "${filePath}"`);
+  }
+
+  /**
+   * Push a file to the device
+   */
+  async pushFile(filePath: string, destPath: string = '/sdcard/Download/'): Promise<void> {
+    if (!this.deviceSerial) {
+      throw new Error('No device connected');
+    }
+    await this.execAdb(`push "${filePath}" "${destPath}"`);
+  }
+
+  /**
    * Take a screenshot using ADB screencap (original resolution, lossless)
    */
   async takeScreenshot(): Promise<Buffer> {

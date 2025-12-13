@@ -254,6 +254,20 @@ class DeviceSession {
     }
     return this.connection.takeScreenshot();
   }
+
+  async installApk(filePath: string): Promise<void> {
+    if (!this.connection) {
+      throw new Error('No connection');
+    }
+    await this.connection.installApk(filePath);
+  }
+
+  async pushFile(filePath: string, destPath?: string): Promise<void> {
+    if (!this.connection) {
+      throw new Error('No connection');
+    }
+    await this.connection.pushFile(filePath, destPath);
+  }
 }
 
 /**
@@ -655,6 +669,28 @@ export class DeviceManager {
       throw new Error('No active device');
     }
     return session.takeScreenshot();
+  }
+
+  /**
+   * Install APK on active device
+   */
+  async installApk(filePath: string): Promise<void> {
+    const session = this.getActiveSession();
+    if (!session) {
+      throw new Error('No active device');
+    }
+    await session.installApk(filePath);
+  }
+
+  /**
+   * Push file to active device Downloads folder
+   */
+  async pushFile(filePath: string, destPath?: string): Promise<void> {
+    const session = this.getActiveSession();
+    if (!session) {
+      throw new Error('No active device');
+    }
+    await session.pushFile(filePath, destPath);
   }
 
   /**

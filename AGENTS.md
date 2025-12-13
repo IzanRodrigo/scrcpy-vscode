@@ -263,3 +263,12 @@ No automated tests yet. Manual testing:
     - Enter the device IP address and port (e.g., 192.168.1.100:5555)
     - Verify connection progress notification appears
     - Verify device connects and video displays
+17. Test drag & drop file transfer:
+    - Drag an APK file from file explorer onto the device view
+    - Verify drop zone overlay appears with dashed border
+    - Drop the file and verify "Installing..." progress overlay appears
+    - Verify success overlay with checkmark and APK is installed on device
+    - Drag a non-APK file (e.g., image, document) onto the device view
+    - Drop the file and verify "Copying to device..." progress overlay appears
+    - Verify file is copied to /sdcard/Download/ on device
+    - Overlay should auto-hide after 2-3 seconds

@@ -334,6 +334,118 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     .reconnect-btn:hover {
       background: var(--vscode-button-hoverBackground, #106ebe);
     }
+
+    /* Drop zone overlay */
+    .drop-zone {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 120, 212, 0.15);
+      border: 2px dashed var(--vscode-focusBorder, #0078d4);
+      border-radius: 8px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .drop-zone.active {
+      display: flex;
+    }
+
+    .drop-zone-content {
+      text-align: center;
+      color: var(--vscode-foreground, #ccc);
+      background: var(--vscode-editor-background, #1e1e1e);
+      padding: 24px 32px;
+      border-radius: 8px;
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+    }
+
+    .drop-zone-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    .drop-zone-text {
+      font-size: 14px;
+      font-family: var(--vscode-font-family);
+    }
+
+    .drop-zone-hint {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #888);
+      margin-top: 8px;
+    }
+
+    /* File transfer overlay */
+    .file-transfer-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .file-transfer-overlay.active {
+      display: flex;
+    }
+
+    .file-transfer-content {
+      text-align: center;
+      color: var(--vscode-foreground, #ccc);
+      background: var(--vscode-editor-background, #1e1e1e);
+      padding: 24px 32px;
+      border-radius: 8px;
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      min-width: 200px;
+    }
+
+    .file-transfer-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+
+    .file-transfer-spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
+      border-top-color: var(--vscode-focusBorder, #0078d4);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    .file-transfer-text {
+      font-size: 13px;
+      font-family: var(--vscode-font-family);
+    }
+
+    .file-transfer-filename {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #888);
+      margin-top: 6px;
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-transfer-overlay.success .file-transfer-icon {
+      color: var(--vscode-testing-iconPassed, #73c991);
+    }
+
+    .file-transfer-overlay.error .file-transfer-icon {
+      color: var(--vscode-errorForeground, #f48771);
+    }
   </style>
 </head>
 <body>
@@ -352,6 +464,23 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       </div>
       <!-- Stats display -->
       <div id="stats" class="stats hidden"></div>
+      <!-- Drop zone overlay -->
+      <div id="drop-zone" class="drop-zone">
+        <div class="drop-zone-content">
+          <div class="drop-zone-icon">&#128229;</div>
+          <div class="drop-zone-text">Drop files here</div>
+          <div class="drop-zone-hint">APK files will be installed, other files copied to Downloads</div>
+        </div>
+      </div>
+      <!-- File transfer overlay -->
+      <div id="file-transfer-overlay" class="file-transfer-overlay">
+        <div class="file-transfer-content">
+          <div id="file-transfer-spinner" class="file-transfer-spinner"></div>
+          <div id="file-transfer-icon" class="file-transfer-icon" style="display: none;"></div>
+          <div id="file-transfer-text" class="file-transfer-text">Installing...</div>
+          <div id="file-transfer-filename" class="file-transfer-filename"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Control toolbar - fixed at bottom -->
