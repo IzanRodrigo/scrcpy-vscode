@@ -367,7 +367,12 @@ export class DeviceManager {
             });
           }
         } else if (output.includes('failed') || output.includes('unable') || output.includes('cannot')) {
-          reject(new Error(`Failed to connect: ${stdout.trim()}`));
+          // Provide helpful error message for common failure cases
+          let errorMsg = stdout.trim();
+          if (output.includes('connection refused') || output.includes('failed to connect')) {
+            errorMsg += '\n\nFor Android 11+, you need to pair the device first using "Pair new device".';
+          }
+          reject(new Error(errorMsg));
         } else {
           // Unknown response, try to connect anyway
           resolve({
