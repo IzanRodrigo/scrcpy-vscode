@@ -13,7 +13,7 @@ Display and control your Android device screen directly within VS Code, similar 
 - **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power, Rotate)
 - **Clipboard sync** - Ctrl+V pastes from PC to device, Ctrl+C copies from device to PC
 - **WiFi connection** - connect wirelessly via Android 11+ Wireless Debugging or legacy adb tcpip
-- **APK installation** - install APKs via toolbar button or drag & drop
+- **APK installation** - install APKs via toolbar button
 - **Auto-connect** - automatically connects when devices are plugged in
 - **Auto-reconnect** - automatic reconnection on disconnect (configurable retries)
 - Hardware-accelerated video decoding (WebCodecs API)
