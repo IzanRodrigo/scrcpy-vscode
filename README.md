@@ -8,6 +8,7 @@ Display and control your Android device screen directly within VS Code, similar 
 - View Android device screen in real-time
 - **Audio streaming** - hear device audio with mute button (requires scrcpy 2.0+)
 - Touch input support (tap, drag)
+- **Mouse wheel scrolling** - scroll content using the mouse wheel (configurable sensitivity)
 - **Keyboard input** - click canvas to enable typing, with modifier support (Ctrl, Alt, Shift)
 - **Device control buttons** with long press support (Volume, Back, Home, Recent Apps, Power, Rotate)
 - **Clipboard sync** - Ctrl+V pastes from PC to device, Ctrl+C copies from device to PC
@@ -95,6 +96,7 @@ Click the **gear icon** in the scrcpy view toolbar to access settings.
 | `scrcpy.autoReconnect` | `true` | Auto-reconnect when connection is lost |
 | `scrcpy.reconnectRetries` | `2` | Number of reconnection attempts |
 | `scrcpy.lockVideoOrientation` | `false` | Lock video orientation |
+| `scrcpy.scrollSensitivity` | `1.0` | Mouse wheel scroll sensitivity (0.1-5.0) |
 | `scrcpy.showStats` | `false` | Show FPS statistics overlay |
 
 ## Troubleshooting

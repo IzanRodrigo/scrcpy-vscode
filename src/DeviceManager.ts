@@ -233,6 +233,10 @@ class DeviceSession {
     this.connection?.sendKeyWithMeta(keycode, action, metastate);
   }
 
+  sendScroll(x: number, y: number, deltaX: number, deltaY: number): void {
+    this.connection?.sendScroll(x, y, deltaX, deltaY);
+  }
+
   updateDimensions(width: number, height: number): void {
     this.connection?.updateDimensions(width, height);
   }
@@ -630,6 +634,13 @@ export class DeviceManager {
    */
   sendKeyWithMeta(keycode: number, action: 'down' | 'up', metastate: number): void {
     this.getActiveSession()?.sendKeyWithMeta(keycode, action, metastate);
+  }
+
+  /**
+   * Send scroll event to active device
+   */
+  sendScroll(x: number, y: number, deltaX: number, deltaY: number): void {
+    this.getActiveSession()?.sendScroll(x, y, deltaX, deltaY);
   }
 
   /**

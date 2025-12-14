@@ -121,7 +121,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       autoConnect: config.get<boolean>('autoConnect', true),
       autoReconnect: config.get<boolean>('autoReconnect', true),
       reconnectRetries: config.get<number>('reconnectRetries', 2),
-      lockVideoOrientation: config.get<boolean>('lockVideoOrientation', false)
+      lockVideoOrientation: config.get<boolean>('lockVideoOrientation', false),
+      scrollSensitivity: config.get<number>('scrollSensitivity', 1.0)
     };
   }
 
@@ -251,6 +252,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     keycode?: number;
     text?: string;
     metastate?: number;
+    deltaX?: number;
+    deltaY?: number;
   }) {
     switch (message.type) {
       case 'touch':
@@ -261,6 +264,18 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
             message.action,
             message.screenWidth ?? 0,
             message.screenHeight ?? 0
+          );
+        }
+        break;
+
+      case 'scroll':
+        if (this._deviceManager && message.x !== undefined && message.y !== undefined &&
+            message.deltaX !== undefined && message.deltaY !== undefined) {
+          this._deviceManager.sendScroll(
+            message.x,
+            message.y,
+            message.deltaX,
+            message.deltaY
           );
         }
         break;

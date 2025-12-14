@@ -15,7 +15,7 @@ scrcpy-vscode/
 │       ├── main.ts           # WebView entry point, tab management
 │       ├── VideoRenderer.ts  # WebCodecs H.264 decoder (with pause/resume)
 │       ├── AudioRenderer.ts  # Opus decoder using opus-decoder WASM library
-│       ├── InputHandler.ts   # Touch/mouse event handling
+│       ├── InputHandler.ts   # Touch/mouse/scroll event handling
 │       └── KeyboardHandler.ts # Keyboard input (text + keycodes)
 ├── dist/                     # Compiled output
 │   ├── extension.js          # Main extension bundle
@@ -79,6 +79,22 @@ Offset  Size  Field
 24      4     Action button
 28      4     Buttons
 ```
+
+### Control Messages (Scroll) - 21 bytes
+
+```
+Offset  Size  Field
+0       1     Type (3 = INJECT_SCROLL_EVENT)
+1       4     X position
+5       4     Y position
+9       2     Screen width
+11      2     Screen height
+13      2     Horizontal scroll (16-bit signed fixed-point)
+15      2     Vertical scroll (16-bit signed fixed-point)
+17      4     Buttons
+```
+
+Note: Scroll values are encoded as 16-bit signed fixed-point numbers. The value is normalized to [-1, 1] range and multiplied by 32768 (2^15).
 
 ### Control Messages (Key Event) - 14 bytes
 

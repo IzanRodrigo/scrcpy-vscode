@@ -9,11 +9,17 @@ type TouchAction = 'down' | 'move' | 'up';
 type InputCallback = (x: number, y: number, action: TouchAction) => void;
 
 /**
+ * Callback for scroll events
+ */
+type ScrollCallback = (x: number, y: number, deltaX: number, deltaY: number) => void;
+
+/**
  * Handles touch/mouse input on the canvas and forwards to extension
  */
 export class InputHandler {
   private canvas: HTMLCanvasElement;
   private onInput: InputCallback;
+  private onScroll?: ScrollCallback;
   private isPointerDown = false;
   private pointerId: number | null = null;
 
@@ -21,12 +27,20 @@ export class InputHandler {
   private lastMoveTime = 0;
   private moveThrottleMs = 16; // ~60fps
 
-  // Bound event handlers for cleanup
-  private boundHandlers: Map<string, (e: PointerEvent | Event) => void> = new Map();
+  // Scroll accumulation state
+  private scrollBufferX = 0;
+  private scrollBufferY = 0;
+  private lastScrollX = 0;
+  private lastScrollY = 0;
+  private scrollRafId: number | null = null;
 
-  constructor(canvas: HTMLCanvasElement, onInput: InputCallback) {
+  // Bound event handlers for cleanup
+  private boundHandlers: Map<string, (e: PointerEvent | WheelEvent | Event) => void> = new Map();
+
+  constructor(canvas: HTMLCanvasElement, onInput: InputCallback, onScroll?: ScrollCallback) {
     this.canvas = canvas;
     this.onInput = onInput;
+    this.onScroll = onScroll;
 
     this.attachEventListeners();
   }
@@ -40,6 +54,7 @@ export class InputHandler {
     const onPointerDown = (e: Event) => this.onPointerDown(e as PointerEvent);
     const onPointerMove = (e: Event) => this.onPointerMove(e as PointerEvent);
     const onPointerUp = (e: Event) => this.onPointerUp(e as PointerEvent);
+    const onWheel = (e: Event) => this.onWheelEvent(e as WheelEvent);
     const onContextMenu = (e: Event) => e.preventDefault();
 
     this.canvas.addEventListener('pointerdown', onPointerDown);
@@ -47,6 +62,7 @@ export class InputHandler {
     this.canvas.addEventListener('pointerup', onPointerUp);
     this.canvas.addEventListener('pointercancel', onPointerUp);
     this.canvas.addEventListener('pointerleave', onPointerUp);
+    this.canvas.addEventListener('wheel', onWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', onContextMenu);
 
     // Store for cleanup
@@ -55,6 +71,7 @@ export class InputHandler {
     this.boundHandlers.set('pointerup', onPointerUp);
     this.boundHandlers.set('pointercancel', onPointerUp);
     this.boundHandlers.set('pointerleave', onPointerUp);
+    this.boundHandlers.set('wheel', onWheel);
     this.boundHandlers.set('contextmenu', onContextMenu);
 
     // Prevent default touch behavior
@@ -130,9 +147,96 @@ export class InputHandler {
   }
 
   /**
+   * Handle mouse wheel event
+   */
+  private onWheelEvent(event: WheelEvent) {
+    event.preventDefault();
+
+    if (!this.onScroll) {
+      return;
+    }
+
+    const coords = this.getNormalizedCoordsFromMouse(event);
+
+    // Update last known position
+    this.lastScrollX = coords.x;
+    this.lastScrollY = coords.y;
+
+    // Normalize based on deltaMode
+    // DOM_DELTA_PIXEL = 0, DOM_DELTA_LINE = 1, DOM_DELTA_PAGE = 2
+    let deltaX = event.deltaX;
+    let deltaY = event.deltaY;
+
+    if (event.deltaMode === 1) {
+      // Line mode - multiply by typical line height
+      deltaX *= 16;
+      deltaY *= 16;
+    } else if (event.deltaMode === 2) {
+      // Page mode - multiply by typical page height
+      deltaX *= 100;
+      deltaY *= 100;
+    }
+
+    // Scale to scrcpy units (negative because scrcpy vScroll down is negative)
+    // Use larger divisor for slower, more controlled scrolling
+    const SCROLL_STEP = 200;
+    deltaX = -deltaX / SCROLL_STEP;
+    deltaY = -deltaY / SCROLL_STEP;
+
+    // Accumulate scroll deltas
+    this.scrollBufferX += deltaX;
+    this.scrollBufferY += deltaY;
+
+    // Schedule transmission on next animation frame
+    if (this.scrollRafId === null) {
+      this.scrollRafId = requestAnimationFrame(() => this.processScrollBuffer());
+    }
+  }
+
+  /**
+   * Process accumulated scroll buffer and send to device
+   */
+  private processScrollBuffer() {
+    this.scrollRafId = null;
+
+    // Tiny threshold to ignore sub-pixel jitter
+    const THRESHOLD = 0.0001;
+
+    if (Math.abs(this.scrollBufferX) > THRESHOLD || Math.abs(this.scrollBufferY) > THRESHOLD) {
+      this.onScroll!(
+        this.lastScrollX,
+        this.lastScrollY,
+        this.scrollBufferX,
+        this.scrollBufferY
+      );
+
+      // Reset buffer
+      this.scrollBufferX = 0;
+      this.scrollBufferY = 0;
+    }
+  }
+
+  /**
    * Get normalized coordinates (0-1) from pointer event
    */
   private getNormalizedCoords(event: PointerEvent): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+
+    // Get position relative to canvas
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    // Normalize to 0-1 range, clamped
+    const normalizedX = Math.max(0, Math.min(1, x / rect.width));
+    const normalizedY = Math.max(0, Math.min(1, y / rect.height));
+
+    return { x: normalizedX, y: normalizedY };
+  }
+
+  /**
+   * Get normalized coordinates (0-1) from mouse/wheel event
+   */
+  private getNormalizedCoordsFromMouse(event: MouseEvent): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
 
     // Get position relative to canvas

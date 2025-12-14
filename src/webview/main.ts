@@ -530,19 +530,36 @@ function createDeviceSession(
   audioRenderer.setMuted(isMuted);
 
   // Create input handler
-  const inputHandler = new InputHandler(canvas, (x, y, action) => {
-    if (deviceId === activeDeviceId) {
-      vscode.postMessage({
-        type: 'touch',
-        deviceId,
-        x,
-        y,
-        action,
-        screenWidth: canvas.width,
-        screenHeight: canvas.height
-      });
+  const inputHandler = new InputHandler(
+    canvas,
+    (x, y, action) => {
+      if (deviceId === activeDeviceId) {
+        vscode.postMessage({
+          type: 'touch',
+          deviceId,
+          x,
+          y,
+          action,
+          screenWidth: canvas.width,
+          screenHeight: canvas.height
+        });
+      }
+    },
+    (x, y, deltaX, deltaY) => {
+      if (deviceId === activeDeviceId) {
+        vscode.postMessage({
+          type: 'scroll',
+          deviceId,
+          x,
+          y,
+          deltaX,
+          deltaY,
+          screenWidth: canvas.width,
+          screenHeight: canvas.height
+        });
+      }
     }
-  });
+  );
 
   // Create keyboard handler
   const keyboardHandler = new KeyboardHandler(

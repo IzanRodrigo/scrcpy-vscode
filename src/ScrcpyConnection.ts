@@ -42,6 +42,7 @@ export interface ScrcpyConfig {
   autoReconnect: boolean;
   reconnectRetries: number;
   lockVideoOrientation: boolean;
+  scrollSensitivity: number;
 }
 
 // Type for clipboard callback
@@ -620,6 +621,77 @@ export class ScrcpyConnection {
       this.controlSocket.write(msg);
     } catch (error) {
       console.error('Failed to send touch event:', error);
+    }
+  }
+
+  /**
+   * Send scroll event to device.
+   * Handles large deltas by splitting them into multiple valid packets.
+   */
+  sendScroll(
+    normalizedX: number,
+    normalizedY: number,
+    deltaX: number,
+    deltaY: number
+  ): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Convert normalized coordinates to device coordinates
+    const x = Math.round(normalizedX * this.deviceWidth);
+    const y = Math.round(normalizedY * this.deviceHeight);
+
+    // Apply sensitivity config
+    const sensitivity = this.config.scrollSensitivity;
+    let hScrollRemaining = deltaX * sensitivity;
+    let vScrollRemaining = deltaY * sensitivity;
+
+    // Max 16-bit signed int value for fixed-point math
+    // Use 32767 instead of 32768 to stay safely within signed range
+    const FIXED_POINT_MULTIPLIER = 32767;
+
+    // Loop until we have sent the entire scroll distance
+    while (Math.abs(hScrollRemaining) > 0.001 || Math.abs(vScrollRemaining) > 0.001) {
+      // Clamp the step to [-1, 1] range allowed by protocol
+      const stepH = Math.max(-1, Math.min(1, hScrollRemaining));
+      const stepV = Math.max(-1, Math.min(1, vScrollRemaining));
+
+      // Scrcpy scroll message format (21 bytes):
+      // type (1) + x (4) + y (4) + width (2) + height (2) + hScroll (2) + vScroll (2) + buttons (4)
+      const msg = Buffer.alloc(21);
+
+      // Type: INJECT_SCROLL_EVENT = 3
+      msg.writeUInt8(ScrcpyProtocol.ControlMessageType.INJECT_SCROLL_EVENT, 0);
+
+      // Position (x, y as 32-bit integers)
+      msg.writeUInt32BE(x, 1);
+      msg.writeUInt32BE(y, 5);
+
+      // Screen width and height (16-bit)
+      msg.writeUInt16BE(this.deviceWidth, 9);
+      msg.writeUInt16BE(this.deviceHeight, 11);
+
+      // Fixed-point scroll values
+      const hScrollFixed = Math.round(stepH * FIXED_POINT_MULTIPLIER);
+      const vScrollFixed = Math.round(stepV * FIXED_POINT_MULTIPLIER);
+
+      msg.writeInt16BE(hScrollFixed, 13);
+      msg.writeInt16BE(vScrollFixed, 15);
+
+      // Buttons (4 bytes) - no buttons held during scroll
+      msg.writeUInt32BE(0, 17);
+
+      try {
+        this.controlSocket.write(msg);
+      } catch (error) {
+        console.error('Failed to send scroll event:', error);
+        break;
+      }
+
+      // Subtract what we just sent
+      hScrollRemaining -= stepH;
+      vScrollRemaining -= stepV;
     }
   }
 

@@ -35,7 +35,7 @@ src/
     ├── main.ts           # WebView entry, message handling, tab management
     ├── VideoRenderer.ts  # WebCodecs H.264 decoder (with pause/resume)
     ├── AudioRenderer.ts  # WebCodecs Opus decoder (with pause/resume/mute)
-    ├── InputHandler.ts   # Pointer event handling
+    ├── InputHandler.ts   # Pointer and scroll event handling
     └── KeyboardHandler.ts # Keyboard input (text injection + keycodes)
 ```
 
@@ -77,6 +77,7 @@ src/
   - `handleAudioStream()`: Parses audio protocol (Opus codec)
   - `handleControlSocketData()`: Parses device messages (clipboard, ACKs)
   - `sendTouch()`: Sends touch control messages (32 bytes, uses stored `deviceWidth`/`deviceHeight` for coordinate mapping)
+  - `sendScroll()`: Sends scroll control messages (21 bytes, uses 16-bit fixed-point encoding for scroll amounts)
   - `sendKeyDown()` / `sendKeyUp()`: Sends separate key down/up events (14 bytes each)
   - `rotateDevice()`: Rotates device screen counter-clockwise (1 byte control message)
   - `takeScreenshot()`: Captures device screen via `adb exec-out screencap -p` (original resolution, lossless PNG)
@@ -114,6 +115,7 @@ src/
 
 ### Control Messages (to scrcpy server)
 - Touch events: 32 bytes (type=2, action, pointer_id, x, y, dimensions, pressure, buttons)
+- Scroll events: 21 bytes (type=3, x, y, dimensions, hScroll, vScroll, buttons)
 - Key events: 14 bytes (type=0, action, keycode, repeat, metastate)
 - Set clipboard: variable (type=9, sequence 8 bytes, paste flag 1 byte, length 4 bytes, UTF-8 text)
 - Rotate device: 1 byte (type=11)
@@ -245,7 +247,13 @@ No automated tests yet. Manual testing:
     - Verify PNG has device's original resolution (not scaled) and lossless quality
     - Test `scrcpy.screenshotSavePath` setting to change default save location
     - Test `scrcpy.screenshotShowSaveDialog` setting to enable save dialog
-15. Test WiFi connection (Android 11+ with pairing):
+15. Test mouse wheel scrolling:
+    - Position mouse over the device view (no click required)
+    - Use mouse wheel to scroll vertically
+    - Verify content scrolls in the expected direction
+    - Use horizontal scroll (if available on trackpad/mouse) to scroll horizontally
+    - Test `scrcpy.scrollSensitivity` setting to adjust scroll speed (0.1-5.0, default 1.0)
+16. Test WiFi connection (Android 11+ with pairing):
     - Enable wireless debugging on your Android device (Settings > Developer options > Wireless debugging)
     - Tap "Pair device with pairing code" to get the pairing address and code
     - Run command "Scrcpy: Connect to Device over WiFi" or click the WiFi icon in the view title
@@ -256,14 +264,14 @@ No automated tests yet. Manual testing:
     - Enter the connection address from the main Wireless debugging screen (different from pairing address)
     - Verify device connects and video displays
     - Verify touch and control buttons work over WiFi
-16. Test WiFi connection (legacy or already paired):
+17. Test WiFi connection (legacy or already paired):
     - For devices already paired, or using legacy `adb tcpip 5555`
     - Run command "Scrcpy: Connect to Device over WiFi"
     - Select "Connect to paired device"
     - Enter the device IP address and port (e.g., 192.168.1.100:5555)
     - Verify connection progress notification appears
     - Verify device connects and video displays
-17. Test drag & drop file transfer:
+18. Test drag & drop file transfer:
     - Drag an APK file from file explorer onto the device view
     - Verify drop zone overlay appears with dashed border
     - Drop the file and verify "Installing..." progress overlay appears

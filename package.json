@@ -145,8 +145,21 @@
         }
       },
       {
-        "title": "%config.title.clipboard%",
+        "title": "%config.title.input%",
         "order": 5,
+        "properties": {
+          "scrcpy.scrollSensitivity": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 0.1,
+            "maximum": 5.0,
+            "markdownDescription": "%config.scrcpy.scrollSensitivity%"
+          }
+        }
+      },
+      {
+        "title": "%config.title.clipboard%",
+        "order": 6,
         "properties": {
           "scrcpy.clipboardSync": {
             "type": "boolean",
@@ -157,7 +170,7 @@
       },
       {
         "title": "%config.title.screenshots%",
-        "order": 6,
+        "order": 7,
         "properties": {
           "scrcpy.screenshotSavePath": {
             "type": "string",
@@ -175,7 +188,7 @@
       },
       {
         "title": "%config.title.connection%",
-        "order": 7,
+        "order": 8,
         "properties": {
           "scrcpy.autoConnect": {
             "type": "boolean",
