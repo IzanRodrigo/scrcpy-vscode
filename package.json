@@ -283,6 +283,20 @@
             "minimum": 0.1,
             "maximum": 5,
             "markdownDescription": "%config.scrcpy.scrollSensitivity%"
+          },
+          "scrcpy.keyboardMode": {
+            "type": "string",
+            "default": "inject",
+            "order": 1,
+            "enum": [
+              "inject",
+              "uhid"
+            ],
+            "enumDescriptions": [
+              "%config.scrcpy.keyboardMode.inject%",
+              "%config.scrcpy.keyboardMode.uhid%"
+            ],
+            "markdownDescription": "%config.scrcpy.keyboardMode%"
           }
         }
       },

@@ -55,6 +55,7 @@ export interface ScrcpyConfig {
   cameraFps: number;
   crop: string;
   displayId: number;
+  keyboardMode: 'inject' | 'uhid';
 }
 
 // Type for clipboard callback
@@ -295,6 +296,7 @@ export class ScrcpyConnection {
       ...(newDisplayArg ? [newDisplayArg] : []),
       ...(this.config.displayId !== 0 ? [`display_id=${this.config.displayId}`] : []),
       ...(this.config.crop && this.config.crop.trim() !== '' ? [`crop=${this.config.crop}`] : []),
+      ...(this.config.keyboardMode === 'uhid' ? ['keyboard=uhid'] : []),
       'send_device_meta=true',
       'send_frame_meta=true',
       'send_codec_meta=true',

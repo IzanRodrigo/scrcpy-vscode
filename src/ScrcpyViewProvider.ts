@@ -117,6 +117,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
             'scrcpy.cameraFps',
             'scrcpy.crop',
             'scrcpy.displayId',
+            'scrcpy.keyboardMode',
           ];
           const needsReconnect = reconnectSettings.some((s) => e.affectsConfiguration(s));
 
@@ -170,6 +171,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       cameraFps: config.get<number>('cameraFps', 0),
       crop: config.get<string>('crop', ''),
       displayId: config.get<number>('displayId', 0),
+      keyboardMode: config.get<'inject' | 'uhid'>('keyboardMode', 'inject'),
     };
   }
 
