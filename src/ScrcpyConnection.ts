@@ -41,7 +41,7 @@ export interface ScrcpyConfig {
   maxFps: number;
   showTouches: boolean;
   audio: boolean;
-  audioSource: 'output' | 'mic';
+  audioSource: 'output' | 'mic' | 'playback-capture';
   clipboardSync: boolean;
   autoConnect: boolean;
   autoReconnect: boolean;
@@ -274,7 +274,9 @@ export class ScrcpyConnection {
       'video=true',
       `audio=${this.config.audio}`,
       ...(this.config.audio ? ['audio_codec=opus'] : []),
-      ...(this.config.audio && this.config.audioSource === 'mic' ? ['audio_source=mic'] : []),
+      ...(this.config.audio && this.config.audioSource !== 'output'
+        ? [`audio_source=${this.config.audioSource}`]
+        : []),
       'control=true',
       'video_codec=h264',
       `video_source=${this.config.videoSource}`,

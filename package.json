@@ -245,11 +245,13 @@
             "order": 1,
             "enum": [
               "output",
-              "mic"
+              "mic",
+              "playback-capture"
             ],
             "enumDescriptions": [
               "%config.scrcpy.audioSource.output%",
-              "%config.scrcpy.audioSource.mic%"
+              "%config.scrcpy.audioSource.mic%",
+              "%config.scrcpy.audioSource.playback-capture%"
             ],
             "markdownDescription": "%config.scrcpy.audioSource%"
           }

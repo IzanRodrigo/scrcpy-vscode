@@ -157,7 +157,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       maxFps: config.get<number>('maxFps', 60),
       showTouches: config.get<boolean>('showTouches', false),
       audio: config.get<boolean>('audio', true),
-      audioSource: config.get<'output' | 'mic'>('audioSource', 'output'),
+      audioSource: config.get<'output' | 'mic' | 'playback-capture'>('audioSource', 'output'),
       clipboardSync: config.get<boolean>('clipboardSync', true),
       autoConnect: config.get<boolean>('autoConnect', true),
       autoReconnect: config.get<boolean>('autoReconnect', true),
