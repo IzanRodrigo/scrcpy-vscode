@@ -700,7 +700,7 @@ function handleMessage(event: MessageEvent) {
  */
 function handleVideoFrame(message: {
   deviceId: string;
-  data: number[];
+  data: number[] | Uint8Array | ArrayBuffer;
   isConfig: boolean;
   isKeyFrame: boolean;
   width?: number;
@@ -728,8 +728,17 @@ function handleVideoFrame(message: {
   }
 
   // Push frame data
-  if (message.data && message.data.length > 0) {
-    const frameData = new Uint8Array(message.data);
+  if (message.data) {
+    const frameData =
+      message.data instanceof Uint8Array
+        ? message.data
+        : message.data instanceof ArrayBuffer
+          ? new Uint8Array(message.data)
+          : new Uint8Array(message.data);
+
+    if (frameData.length === 0) {
+      return;
+    }
     session.videoRenderer.pushFrame(frameData, message.isConfig, message.isKeyFrame);
 
     // Hide status and show UI once we're receiving frames for active device
@@ -747,23 +756,33 @@ function handleVideoFrame(message: {
 /**
  * Handle audio frame from extension
  */
-function handleAudioFrame(message: { deviceId: string; data: number[]; isConfig: boolean }) {
+function handleAudioFrame(message: {
+  deviceId: string;
+  data: number[] | Uint8Array | ArrayBuffer;
+  isConfig: boolean;
+}) {
   const session = sessions.get(message.deviceId);
   if (!session) {
     console.warn('AudioFrame: no session found for device', message.deviceId);
     return;
   }
 
+  const frameData =
+    message.data instanceof Uint8Array
+      ? message.data
+      : message.data instanceof ArrayBuffer
+        ? new Uint8Array(message.data)
+        : new Uint8Array(message.data);
+
   // Initialize audio renderer on first frame (config signal)
-  if (message.isConfig && message.data.length === 0) {
+  if (message.isConfig && frameData.length === 0) {
     console.log('AudioFrame: initializing audio renderer for', message.deviceId);
     session.audioRenderer.initialize();
     return;
   }
 
   // Push frame data
-  if (message.data && message.data.length > 0) {
-    const frameData = new Uint8Array(message.data);
+  if (frameData.length > 0) {
     session.audioRenderer.pushFrame(frameData, message.isConfig);
   }
 }
