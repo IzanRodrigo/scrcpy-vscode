@@ -37,12 +37,19 @@ export class VideoRenderer {
 
   // Config packet storage (like sc_packet_merger in scrcpy)
   private pendingConfig: Uint8Array | null = null;
+  private lastConfig: Uint8Array | null = null;
   private codecConfigured = false;
   private needsKeyframe = true; // After configure(), decoder needs a keyframe first
   private isPaused = false;
   private resizeObserver: ResizeObserver | null = null;
   private codec: VideoCodec = 'h264'; // Default to H.264
   private codecDetected = false;
+
+  // Backpressure thresholds (WebCodecs decodeQueueSize)
+  private static readonly DROP_QUEUE_THRESHOLD = 12;
+  private static readonly RESET_QUEUE_THRESHOLD = 48;
+  private static readonly RESET_COOLDOWN_MS = 500;
+  private lastBackpressureReset = 0;
 
   // Extended stats tracking
   private bytesReceived = 0;
@@ -183,6 +190,27 @@ export class VideoRenderer {
   }
 
   /**
+   * Reset decoder state to recover from severe backlog.
+   * Keeps the last known config so we can reconfigure on the next keyframe.
+   */
+  private resetDecoderForBackpressure(): void {
+    // Clear decoded frames immediately to free memory
+    for (const frame of this.pendingFrames) {
+      frame.close();
+    }
+    this.pendingFrames = [];
+    this.isRendering = false;
+
+    // Recreate decoder to drop any queued decode work
+    this.createDecoder();
+
+    // Re-seed config so the next keyframe can configure + decode
+    if (this.lastConfig) {
+      this.pendingConfig = this.lastConfig;
+    }
+  }
+
+  /**
    * Pause video rendering (drops frames while paused)
    */
   pause(): void {
@@ -223,6 +251,7 @@ export class VideoRenderer {
       // Only store if data is not empty (dimensions-only messages have empty data)
       if (data.length > 0) {
         this.pendingConfig = data;
+        this.lastConfig = data;
       }
 
       // Detect codec from config packet if not already detected
@@ -248,13 +277,44 @@ export class VideoRenderer {
     // Check if this is a keyframe by looking at NAL type
     const isKey = isKeyFrame ?? this.containsKeyFrame(data);
 
+    // Backpressure: stop feeding the decoder if it is falling behind.
+    // If the queue is severely backed up, recreate the decoder to drop stale work and wait for a keyframe.
+    if (
+      this.codecConfigured &&
+      this.decoder.decodeQueueSize > VideoRenderer.RESET_QUEUE_THRESHOLD
+    ) {
+      const now = performance.now();
+      if (now - this.lastBackpressureReset > VideoRenderer.RESET_COOLDOWN_MS && this.lastConfig) {
+        this.lastBackpressureReset = now;
+        this.resetDecoderForBackpressure();
+      }
+
+      // After a reset (or if we can't reset), drop delta frames and wait for a keyframe.
+      if (!isKey) {
+        this.framesDropped++;
+        return;
+      }
+    } else if (
+      this.codecConfigured &&
+      !isKey &&
+      this.decoder.decodeQueueSize > VideoRenderer.DROP_QUEUE_THRESHOLD
+    ) {
+      // Moderate backlog: drop delta frames to avoid unbounded memory/latency growth.
+      this.framesDropped++;
+      return;
+    }
+
     // Configure codec on first keyframe with config
-    if (!this.codecConfigured && isKey && this.pendingConfig) {
+    if (!this.codecConfigured && isKey && (this.pendingConfig || this.lastConfig)) {
+      // If we lost the pending config (e.g. after backlog recovery), fall back to the last known config.
+      if (!this.pendingConfig && this.lastConfig) {
+        this.pendingConfig = this.lastConfig;
+      }
       this.configureCodec();
       // For AV1, config is in description, don't merge with frame
       // For H.264/H.265, merge config with frame data
       const frameData =
-        this.codec === 'av1' ? data : this.mergeConfigWithFrame(this.pendingConfig, data);
+        this.codec === 'av1' ? data : this.mergeConfigWithFrame(this.pendingConfig!, data);
       this.pendingConfig = null;
       // Decode the keyframe on next tick to ensure configure() completes
       queueMicrotask(() => {
@@ -291,11 +351,6 @@ export class VideoRenderer {
       if (isKey && this.pendingConfig && this.codec !== 'av1') {
         frameData = this.mergeConfigWithFrame(this.pendingConfig, data);
         this.pendingConfig = null;
-      }
-
-      // Track frame drops based on decode queue size
-      if (this.statsEnabled && this.decoder.decodeQueueSize > 10) {
-        this.framesDropped++;
       }
 
       const chunk = new EncodedVideoChunk({
