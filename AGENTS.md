@@ -37,8 +37,11 @@ npm run format:check
 # Run ESLint
 npm run lint
 
-# Run tests (placeholder for now)
+# Run tests
 npm test
+
+# Run tests with coverage
+npm run test:coverage
 ```
 
 **Pre-commit hook**: Husky + lint-staged automatically formats and lints staged files before each commit.
@@ -66,7 +69,8 @@ The project uses **GitHub Actions** for continuous integration and deployment.
 4. Run linter (`npm run lint`)
 5. Check formatting (`npm run format:check`)
 6. Compile (`npm run compile`)
-7. Run tests (`npm test`)
+7. Run tests with coverage (`npm run test:coverage`)
+8. Upload coverage report to Codecov
 
 ### Publish Job (runs only on version tags `v*`)
 
@@ -268,7 +272,51 @@ Audio support is implemented using:
 
 ## Testing
 
-No automated tests yet. Manual testing:
+### Automated Tests
+
+The project uses **Vitest** for unit and integration testing with **happy-dom** for browser environment simulation.
+
+```bash
+# Run all tests
+npm test
+
+# Watch mode for development
+npm run test:watch
+
+# Run with coverage report
+npm run test:coverage
+
+# Open Vitest UI
+npm run test:ui
+```
+
+**Test structure:**
+
+```
+test/
+├── unit/
+│   ├── H264Utils.test.ts       # H.264 SPS parsing tests
+│   ├── ScrcpyProtocol.test.ts  # Protocol constants tests
+│   └── webview/
+│       ├── InputHandler.test.ts    # Pointer/scroll event tests
+│       └── KeyboardHandler.test.ts # Keyboard input tests
+├── integration/
+│   ├── DeviceManager.test.ts   # Device discovery & WiFi tests
+│   └── ScrcpyConnection.test.ts # Connection & control tests
+├── mocks/
+│   ├── vscode.ts       # VS Code API mock
+│   ├── child_process.ts # spawn/exec mock
+│   └── net.ts          # Socket/Server mock
+├── fixtures/
+│   └── h264-samples.ts # H.264 NAL unit samples
+└── setup.ts            # Global test setup
+```
+
+**Coverage:** Tests cover ~50% of the codebase overall, with webview code at ~96% coverage.
+
+**CI Integration:** Tests run automatically on every push/PR via GitHub Actions with coverage reporting to Codecov.
+
+### Manual Testing
 
 1. Connect Android device(s)
 2. Run extension (F5)

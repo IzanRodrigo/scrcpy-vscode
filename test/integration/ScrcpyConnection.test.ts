@@ -1,0 +1,651 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { exec, spawn } from 'child_process';
+import { MockChildProcess, resetMocks as resetChildProcessMocks } from '../mocks/child_process';
+import { MockSocket, resetMocks as resetNetMocks } from '../mocks/net';
+
+// Mock modules before importing ScrcpyConnection
+vi.mock('child_process', () => import('../mocks/child_process'));
+vi.mock('net', () => import('../mocks/net'));
+vi.mock('vscode', () => import('../mocks/vscode'));
+
+// Import after mocks are set up
+import { ScrcpyConnection, ScrcpyConfig } from '../../src/ScrcpyConnection';
+import { ControlMessageType, MotionEventAction, KeyAction } from '../../src/ScrcpyProtocol';
+
+describe('ScrcpyConnection', () => {
+  let connection: ScrcpyConnection;
+  let videoCallback: ReturnType<typeof vi.fn>;
+  let statusCallback: ReturnType<typeof vi.fn>;
+  let errorCallback: ReturnType<typeof vi.fn>;
+  let audioCallback: ReturnType<typeof vi.fn>;
+  let config: ScrcpyConfig;
+
+  beforeEach(() => {
+    resetChildProcessMocks();
+    resetNetMocks();
+    vi.clearAllMocks();
+
+    videoCallback = vi.fn();
+    statusCallback = vi.fn();
+    errorCallback = vi.fn();
+    audioCallback = vi.fn();
+
+    config = {
+      scrcpyPath: '',
+      screenOff: false,
+      stayAwake: true,
+      maxSize: 1920,
+      bitRate: 8,
+      maxFps: 60,
+      showTouches: false,
+      audio: false,
+      clipboardSync: false,
+      autoConnect: false,
+      autoReconnect: false,
+      reconnectRetries: 2,
+      lockVideoOrientation: false,
+      scrollSensitivity: 1.0,
+    };
+
+    connection = new ScrcpyConnection(
+      videoCallback,
+      statusCallback,
+      config,
+      undefined, // targetDeviceSerial
+      undefined, // onClipboard
+      undefined, // clipboardAPI
+      errorCallback,
+      audioCallback
+    );
+  });
+
+  afterEach(() => {
+    // Don't await disconnect as it may hang on unmocked sockets
+    // Just clear mocks
+    vi.clearAllMocks();
+  });
+
+  describe('connect', () => {
+    it('should call status callback with connecting message', async () => {
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(null, 'List of devices attached\nemulator-5554\tdevice\n', '');
+          return new MockChildProcess();
+        }
+      );
+
+      await connection.connect();
+
+      expect(statusCallback).toHaveBeenCalledWith(expect.stringContaining('Connecting'));
+    });
+
+    it('should throw when no devices are found', async () => {
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(null, 'List of devices attached\n', '');
+          return new MockChildProcess();
+        }
+      );
+
+      await expect(connection.connect()).rejects.toThrow('No Android devices found');
+    });
+
+    it('should throw when ADB is not installed', async () => {
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(new Error('command not found: adb'), '', 'command not found: adb');
+          return new MockChildProcess();
+        }
+      );
+
+      await expect(connection.connect()).rejects.toThrow('adb');
+    });
+
+    it('should connect to first device when no target specified', async () => {
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(null, 'List of devices attached\nemulator-5554\tdevice\nRZXYZ12345\tdevice\n', '');
+          return new MockChildProcess();
+        }
+      );
+
+      await connection.connect();
+
+      expect(statusCallback).toHaveBeenCalledWith(expect.stringContaining('emulator-5554'));
+    });
+
+    it('should connect to target device when specified', async () => {
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(null, 'List of devices attached\nemulator-5554\tdevice\nRZXYZ12345\tdevice\n', '');
+          return new MockChildProcess();
+        }
+      );
+
+      const targetConnection = new ScrcpyConnection(
+        videoCallback,
+        statusCallback,
+        config,
+        'RZXYZ12345'
+      );
+
+      await targetConnection.connect();
+
+      expect(statusCallback).toHaveBeenCalledWith(expect.stringContaining('RZXYZ12345'));
+    });
+
+    it('should throw when target device is not found', async () => {
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(null, 'List of devices attached\nemulator-5554\tdevice\n', '');
+          return new MockChildProcess();
+        }
+      );
+
+      const targetConnection = new ScrcpyConnection(
+        videoCallback,
+        statusCallback,
+        config,
+        'non-existent-device'
+      );
+
+      await expect(targetConnection.connect()).rejects.toThrow('not found');
+    });
+  });
+
+  describe('sendTouch', () => {
+    it('should create touch message with correct format', () => {
+      // Access private properties for testing
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+      conn.deviceWidth = 1080;
+      conn.deviceHeight = 1920;
+
+      connection.sendTouch(0.5, 0.5, 'down', 1080, 1920);
+
+      expect(mockSocket.write).toHaveBeenCalled();
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // Touch message is 32 bytes
+      expect(buffer.length).toBe(32);
+
+      // First byte is message type (INJECT_TOUCH_EVENT = 2)
+      expect(buffer[0]).toBe(ControlMessageType.INJECT_TOUCH_EVENT);
+
+      // Byte 1 is action (DOWN = 0)
+      expect(buffer[1]).toBe(MotionEventAction.DOWN);
+    });
+
+    it('should send up action correctly', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+      conn.deviceWidth = 1080;
+      conn.deviceHeight = 1920;
+
+      connection.sendTouch(0.5, 0.5, 'up', 1080, 1920);
+
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+      expect(buffer[1]).toBe(MotionEventAction.UP);
+    });
+
+    it('should send move action correctly', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+      conn.deviceWidth = 1080;
+      conn.deviceHeight = 1920;
+
+      connection.sendTouch(0.5, 0.5, 'move', 1080, 1920);
+
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+      expect(buffer[1]).toBe(MotionEventAction.MOVE);
+    });
+
+    it('should not send if not connected', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = false;
+
+      connection.sendTouch(0.5, 0.5, 'down', 1080, 1920);
+
+      expect(mockSocket.write).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendKeyDown / sendKeyUp', () => {
+    it('should send key down message', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+
+      connection.sendKeyDown(66); // KEYCODE_ENTER
+
+      expect(mockSocket.write).toHaveBeenCalled();
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // First byte is INJECT_KEYCODE = 0
+      expect(buffer[0]).toBe(ControlMessageType.INJECT_KEYCODE);
+
+      // Second byte is action (DOWN = 0)
+      expect(buffer[1]).toBe(KeyAction.DOWN);
+    });
+
+    it('should send key up message', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+
+      connection.sendKeyUp(66);
+
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // Second byte is action (UP = 1)
+      expect(buffer[1]).toBe(KeyAction.UP);
+    });
+  });
+
+  describe('sendText', () => {
+    it('should send text injection message', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+
+      connection.sendText('hello');
+
+      expect(mockSocket.write).toHaveBeenCalled();
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // First byte is INJECT_TEXT = 1
+      expect(buffer[0]).toBe(ControlMessageType.INJECT_TEXT);
+
+      // Text length is at bytes 1-4 (big endian)
+      const textLength = buffer.readUInt32BE(1);
+      expect(textLength).toBe(5); // 'hello'.length
+
+      // Text content follows
+      const text = buffer.toString('utf-8', 5, 5 + textLength);
+      expect(text).toBe('hello');
+    });
+
+    it('should handle unicode text', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+
+      connection.sendText('こんにちは'); // Japanese
+
+      expect(mockSocket.write).toHaveBeenCalled();
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // Get text from buffer
+      const textLength = buffer.readUInt32BE(1);
+      const text = buffer.toString('utf-8', 5, 5 + textLength);
+      expect(text).toBe('こんにちは');
+    });
+  });
+
+  describe('sendScroll', () => {
+    it('should send scroll event message', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+      conn.deviceWidth = 1080;
+      conn.deviceHeight = 1920;
+
+      connection.sendScroll(0.5, 0.5, 0, 0.5);
+
+      expect(mockSocket.write).toHaveBeenCalled();
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // First byte is INJECT_SCROLL_EVENT = 3
+      expect(buffer[0]).toBe(ControlMessageType.INJECT_SCROLL_EVENT);
+
+      // Scroll message is 21 bytes
+      expect(buffer.length).toBe(21);
+    });
+
+    it('should split large scroll deltas into multiple messages', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+      conn.deviceWidth = 1080;
+      conn.deviceHeight = 1920;
+
+      // Large delta that exceeds [-1, 1] range
+      connection.sendScroll(0.5, 0.5, 0, 2.5);
+
+      // Should be split into multiple messages: 1.0 + 1.0 + 0.5 = 3 messages
+      expect(mockSocket.write.mock.calls.length).toBe(3);
+    });
+
+    it('should apply scroll sensitivity from config', () => {
+      const sensitiveConfig = { ...config, scrollSensitivity: 2.0 };
+      const sensitiveConnection = new ScrcpyConnection(
+        videoCallback,
+        statusCallback,
+        sensitiveConfig
+      );
+
+      const conn = sensitiveConnection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+      conn.deviceWidth = 1080;
+      conn.deviceHeight = 1920;
+
+      sensitiveConnection.sendScroll(0.5, 0.5, 0, 0.25);
+
+      // With 2x sensitivity, 0.25 becomes 0.5
+      expect(mockSocket.write).toHaveBeenCalled();
+    });
+  });
+
+  describe('rotateDevice', () => {
+    it('should send rotate message', () => {
+      const conn = connection as unknown as {
+        controlSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const mockSocket = new MockSocket();
+      conn.controlSocket = mockSocket;
+      conn.isConnected = true;
+
+      connection.rotateDevice();
+
+      expect(mockSocket.write).toHaveBeenCalled();
+      const buffer = mockSocket.write.mock.calls[0][0] as Buffer;
+
+      // Rotate message is 1 byte (just the type)
+      expect(buffer.length).toBe(1);
+      expect(buffer[0]).toBe(ControlMessageType.ROTATE_DEVICE);
+    });
+  });
+
+  describe('updateDimensions', () => {
+    it('should store new dimensions', () => {
+      const conn = connection as unknown as {
+        deviceWidth: number;
+        deviceHeight: number;
+      };
+
+      connection.updateDimensions(1080, 1920);
+
+      expect(conn.deviceWidth).toBe(1080);
+      expect(conn.deviceHeight).toBe(1920);
+    });
+  });
+
+  describe('disconnect', () => {
+    it('should clean up sockets', async () => {
+      const conn = connection as unknown as {
+        videoSocket: MockSocket;
+        controlSocket: MockSocket;
+        audioSocket: MockSocket;
+        isConnected: boolean;
+      };
+
+      const videoSocket = new MockSocket();
+      const controlSocket = new MockSocket();
+      const audioSocket = new MockSocket();
+
+      conn.videoSocket = videoSocket;
+      conn.controlSocket = controlSocket;
+      conn.audioSocket = audioSocket;
+      conn.isConnected = true;
+
+      await connection.disconnect();
+
+      expect(videoSocket.destroy).toHaveBeenCalled();
+      expect(controlSocket.destroy).toHaveBeenCalled();
+      expect(audioSocket.destroy).toHaveBeenCalled();
+    });
+  });
+
+  describe('takeScreenshot', () => {
+    it('should execute adb screencap command', async () => {
+      const conn = connection as unknown as {
+        deviceSerial: string;
+        isConnected: boolean;
+      };
+      conn.deviceSerial = 'emulator-5554';
+      conn.isConnected = true;
+
+      const mockProcess = new MockChildProcess();
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const screenshotPromise = connection.takeScreenshot();
+
+      // Simulate PNG data coming back
+      const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      setTimeout(() => {
+        mockProcess.simulateStdout(pngHeader);
+        mockProcess.simulateClose(0);
+      }, 10);
+
+      const result = await screenshotPromise;
+
+      expect(spawn).toHaveBeenCalledWith('adb', [
+        '-s',
+        'emulator-5554',
+        'exec-out',
+        'screencap',
+        '-p',
+      ]);
+      expect(result).toBeInstanceOf(Buffer);
+    });
+  });
+
+  describe('installApk', () => {
+    it('should execute adb install command', async () => {
+      const conn = connection as unknown as {
+        deviceSerial: string;
+        isConnected: boolean;
+      };
+      conn.deviceSerial = 'emulator-5554';
+      conn.isConnected = true;
+
+      vi.mocked(exec).mockImplementation(
+        (
+          cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          if (cmd.includes('adb') && cmd.includes('install')) {
+            cb?.(null, 'Success\n', '');
+          }
+          return new MockChildProcess();
+        }
+      );
+
+      await connection.installApk('/path/to/app.apk');
+
+      expect(exec).toHaveBeenCalledWith(
+        expect.stringContaining('adb -s emulator-5554 install -r'),
+        expect.any(Function)
+      );
+    });
+
+    it('should throw on installation failure', async () => {
+      const conn = connection as unknown as {
+        deviceSerial: string;
+        isConnected: boolean;
+      };
+      conn.deviceSerial = 'emulator-5554';
+      conn.isConnected = true;
+
+      vi.mocked(exec).mockImplementation(
+        (
+          _cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(new Error('Installation failed'), '', 'INSTALL_FAILED_INSUFFICIENT_STORAGE');
+          return new MockChildProcess();
+        }
+      );
+
+      await expect(connection.installApk('/path/to/app.apk')).rejects.toThrow();
+    });
+  });
+
+  describe('pushFiles', () => {
+    it('should execute adb push command', async () => {
+      const conn = connection as unknown as {
+        deviceSerial: string;
+        isConnected: boolean;
+      };
+      conn.deviceSerial = 'emulator-5554';
+      conn.isConnected = true;
+
+      vi.mocked(exec).mockImplementation(
+        (
+          cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          if (cmd.includes('adb') && cmd.includes('push')) {
+            cb?.(null, '1 file pushed\n', '');
+          }
+          return new MockChildProcess();
+        }
+      );
+
+      await connection.pushFiles(['/path/to/file.txt']);
+
+      expect(exec).toHaveBeenCalledWith(
+        expect.stringContaining('adb -s emulator-5554 push'),
+        expect.any(Function)
+      );
+    });
+
+    it('should push to custom destination path', async () => {
+      const conn = connection as unknown as {
+        deviceSerial: string;
+        isConnected: boolean;
+      };
+      conn.deviceSerial = 'emulator-5554';
+      conn.isConnected = true;
+
+      vi.mocked(exec).mockImplementation(
+        (
+          cmd: string,
+          _optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
+          cb?.(null, '1 file pushed\n', '');
+          return new MockChildProcess();
+        }
+      );
+
+      await connection.pushFiles(['/path/to/file.txt'], '/sdcard/Custom/');
+
+      expect(exec).toHaveBeenCalledWith(
+        expect.stringContaining('/sdcard/Custom/'),
+        expect.any(Function)
+      );
+    });
+  });
+});
