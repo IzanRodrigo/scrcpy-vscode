@@ -1,10 +1,42 @@
+# Source files
+src/**
+**/*.ts
+**/*.map
+
+# Config files
 .vscode/**
 .vscode-test/**
-src/**
 .gitignore
+.prettierignore
+.prettierrc
+.eslintrc*
 tsconfig.json
 tsconfig.webview.json
 webpack.config.js
-**/*.map
-**/*.ts
+vitest.config.ts
+*.code-workspace
+
+# Dependencies
 node_modules/**
+
+# Test and coverage
+coverage/**
+**/*.test.ts
+**/*.spec.ts
+
+# Documentation (not needed in extension)
+docs/**
+AGENTS.md
+CLAUDE.md
+CODEX.md
+COPILOT.md
+GEMINI.md
+
+# CI/CD and tooling
+.github/**
+.husky/**
+.gemini-clipboard/**
+
+# Build artifacts we don't need
+out/**
+*.vsix
