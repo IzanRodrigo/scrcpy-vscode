@@ -292,6 +292,13 @@ class DeviceSession {
     return this.connection.takeScreenshot();
   }
 
+  async listCameras(): Promise<string> {
+    if (!this.connection) {
+      throw new Error(vscode.l10n.t('No connection'));
+    }
+    return this.connection.listCameras();
+  }
+
   async installApk(filePath: string): Promise<void> {
     if (!this.connection) {
       throw new Error(vscode.l10n.t('No connection'));
@@ -943,6 +950,17 @@ export class DeviceManager {
       throw new Error(vscode.l10n.t('No active device'));
     }
     return session.takeScreenshot();
+  }
+
+  /**
+   * List available cameras on active device
+   */
+  async listCameras(): Promise<string> {
+    const session = this.getActiveSession();
+    if (!session) {
+      throw new Error(vscode.l10n.t('No active device'));
+    }
+    return session.listCameras();
   }
 
   /**

@@ -42,10 +42,24 @@
         "title": "%config.title.videoQuality%",
         "order": 1,
         "properties": {
+          "scrcpy.videoSource": {
+            "type": "string",
+            "default": "display",
+            "order": 0,
+            "enum": [
+              "display",
+              "camera"
+            ],
+            "enumDescriptions": [
+              "%config.scrcpy.videoSource.display%",
+              "%config.scrcpy.videoSource.camera%"
+            ],
+            "markdownDescription": "%config.scrcpy.videoSource%"
+          },
           "scrcpy.maxSize": {
             "type": "number",
             "default": 1920,
-            "order": 0,
+            "order": 1,
             "enum": [
               720,
               1080,
@@ -63,7 +77,7 @@
           "scrcpy.bitRate": {
             "type": "number",
             "default": 8,
-            "order": 1,
+            "order": 2,
             "enum": [
               2,
               4,
@@ -83,7 +97,7 @@
           "scrcpy.maxFps": {
             "type": "number",
             "default": 60,
-            "order": 2,
+            "order": 3,
             "enum": [
               15,
               30,
@@ -99,8 +113,51 @@
         }
       },
       {
-        "title": "%config.title.device%",
+        "title": "%config.title.camera%",
         "order": 2,
+        "properties": {
+          "scrcpy.cameraFacing": {
+            "type": "string",
+            "default": "back",
+            "order": 0,
+            "enum": [
+              "front",
+              "back",
+              "external"
+            ],
+            "enumDescriptions": [
+              "%config.scrcpy.cameraFacing.front%",
+              "%config.scrcpy.cameraFacing.back%",
+              "%config.scrcpy.cameraFacing.external%"
+            ],
+            "markdownDescription": "%config.scrcpy.cameraFacing%"
+          },
+          "scrcpy.cameraId": {
+            "type": "string",
+            "default": "",
+            "order": 1,
+            "markdownDescription": "%config.scrcpy.cameraId%"
+          },
+          "scrcpy.cameraSize": {
+            "type": "string",
+            "default": "",
+            "order": 2,
+            "pattern": "^(\\d+x\\d+)?$",
+            "markdownDescription": "%config.scrcpy.cameraSize%"
+          },
+          "scrcpy.cameraFps": {
+            "type": "number",
+            "default": 0,
+            "order": 3,
+            "minimum": 0,
+            "maximum": 120,
+            "markdownDescription": "%config.scrcpy.cameraFps%"
+          }
+        }
+      },
+      {
+        "title": "%config.title.device%",
+        "order": 3,
         "properties": {
           "scrcpy.screenOff": {
             "type": "boolean",
@@ -130,7 +187,7 @@
       },
       {
         "title": "%config.title.audio%",
-        "order": 3,
+        "order": 4,
         "properties": {
           "scrcpy.audio": {
             "type": "boolean",
@@ -142,7 +199,7 @@
       },
       {
         "title": "%config.title.display%",
-        "order": 4,
+        "order": 5,
         "properties": {
           "scrcpy.showStats": {
             "type": "boolean",
@@ -153,7 +210,7 @@
       },
       {
         "title": "%config.title.input%",
-        "order": 5,
+        "order": 6,
         "properties": {
           "scrcpy.scrollSensitivity": {
             "type": "number",
@@ -166,7 +223,7 @@
       },
       {
         "title": "%config.title.clipboard%",
-        "order": 6,
+        "order": 7,
         "properties": {
           "scrcpy.clipboardSync": {
             "type": "boolean",
@@ -177,7 +234,7 @@
       },
       {
         "title": "%config.title.screenshots%",
-        "order": 7,
+        "order": 8,
         "properties": {
           "scrcpy.screenshotSavePath": {
             "type": "string",
@@ -299,6 +356,11 @@
       {
         "command": "scrcpy.toggleRecording",
         "title": "%command.toggleRecording%"
+      },
+      {
+        "command": "scrcpy.listCameras",
+        "title": "%command.listCameras%",
+        "icon": "$(device-camera-video)"
       }
     ],
     "menus": {
@@ -324,9 +386,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "scrcpy.openSettings",
+          "command": "scrcpy.listCameras",
           "when": "view == scrcpy.deviceView",
           "group": "navigation@5"
+        },
+        {
+          "command": "scrcpy.openSettings",
+          "when": "view == scrcpy.deviceView",
+          "group": "navigation@6"
         }
       ]
     },

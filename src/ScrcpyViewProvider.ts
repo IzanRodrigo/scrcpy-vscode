@@ -104,6 +104,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
             'scrcpy.showTouches',
             'scrcpy.audio',
             'scrcpy.lockVideoOrientation',
+            'scrcpy.videoSource',
+            'scrcpy.cameraFacing',
+            'scrcpy.cameraId',
+            'scrcpy.cameraSize',
+            'scrcpy.cameraFps',
           ];
           const needsReconnect = reconnectSettings.some((s) => e.affectsConfiguration(s));
 
@@ -145,6 +150,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       reconnectRetries: config.get<number>('reconnectRetries', 2),
       lockVideoOrientation: config.get<boolean>('lockVideoOrientation', false),
       scrollSensitivity: config.get<number>('scrollSensitivity', 1.0),
+      videoSource: config.get<'display' | 'camera'>('videoSource', 'display'),
+      cameraFacing: config.get<'front' | 'back' | 'external'>('cameraFacing', 'back'),
+      cameraId: config.get<string>('cameraId', ''),
+      cameraSize: config.get<string>('cameraSize', ''),
+      cameraFps: config.get<number>('cameraFps', 0),
     };
   }
 
@@ -721,6 +731,73 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         }
       }
     );
+  }
+
+  /**
+   * List available cameras on the active device
+   */
+  public async listCameras(): Promise<void> {
+    if (!this._deviceManager) {
+      vscode.window.showErrorMessage(vscode.l10n.t('No device connected'));
+      return;
+    }
+
+    try {
+      const cameraList = await this._deviceManager.listCameras();
+
+      // Parse camera list to show in quick pick
+      const lines = cameraList.split('\n');
+      const cameraItems: Array<{ label: string; description: string; id?: string }> = [];
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('--camera-id=')) {
+          // Extract camera ID and details
+          // Format: --camera-id=0    (back, 4032x3024, fps=[15, 24, 30])
+          const match = trimmed.match(/--camera-id=(\S+)\s+\(([^)]+)\)/);
+          if (match) {
+            const cameraId = match[1];
+            const details = match[2];
+            cameraItems.push({
+              label: `Camera ${cameraId}`,
+              description: details,
+              id: cameraId,
+            });
+          }
+        }
+      }
+
+      if (cameraItems.length === 0) {
+        vscode.window.showInformationMessage('No cameras found on the device');
+        return;
+      }
+
+      // Show quick pick
+      const selected = await vscode.window.showQuickPick(cameraItems, {
+        title: 'Available Cameras',
+        placeHolder: 'Select a camera to copy its ID to settings',
+      });
+
+      if (selected && selected.id) {
+        // Ask if user wants to set this camera ID in settings
+        const setCameraId = await vscode.window.showInformationMessage(
+          `Set camera ID to "${selected.id}" in settings?`,
+          'Yes',
+          'No'
+        );
+
+        if (setCameraId === 'Yes') {
+          const config = vscode.workspace.getConfiguration('scrcpy');
+          await config.update('cameraId', selected.id, vscode.ConfigurationTarget.Workspace);
+          vscode.window.showInformationMessage(
+            `Camera ID set to "${selected.id}". Change video source to "camera" to use it.`
+          );
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to list cameras: ${message}`);
+    }
   }
 
   /**

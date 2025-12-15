@@ -39,6 +39,11 @@ export interface ScrcpyConfig {
   reconnectRetries: number;
   lockVideoOrientation: boolean;
   scrollSensitivity: number;
+  videoSource: 'display' | 'camera';
+  cameraFacing: 'front' | 'back' | 'external';
+  cameraId: string;
+  cameraSize: string;
+  cameraFps: number;
 }
 
 // Type for clipboard callback
@@ -242,12 +247,22 @@ export class ScrcpyConnection {
       ...(this.config.audio ? ['audio_codec=opus'] : []),
       'control=true',
       'video_codec=h264',
+      `video_source=${this.config.videoSource}`,
       `max_size=${this.config.maxSize}`,
       `video_bit_rate=${this.config.bitRate * 1000000}`,
       `max_fps=${this.config.maxFps}`,
       `stay_awake=${this.config.stayAwake}`,
       `show_touches=${this.config.showTouches}`,
       ...(this.config.lockVideoOrientation ? ['capture_orientation=@'] : []),
+      // Camera options (only used when video_source=camera)
+      ...(this.config.videoSource === 'camera'
+        ? [
+            `camera_facing=${this.config.cameraFacing}`,
+            ...(this.config.cameraId ? [`camera_id=${this.config.cameraId}`] : []),
+            ...(this.config.cameraSize ? [`camera_size=${this.config.cameraSize}`] : []),
+            ...(this.config.cameraFps > 0 ? [`camera_fps=${this.config.cameraFps}`] : []),
+          ]
+        : []),
       'send_device_meta=true',
       'send_frame_meta=true',
       'send_codec_meta=true',
@@ -1066,6 +1081,61 @@ export class ScrcpyConnection {
     }
     const quotedPaths = filePaths.map((p) => `"${p}"`).join(' ');
     await this.execAdb(`push ${quotedPaths} "${destPath}"`);
+  }
+
+  /**
+   * List available cameras on the device
+   */
+  async listCameras(): Promise<string> {
+    if (!this.deviceSerial) {
+      throw new Error(vscode.l10n.t('No device connected'));
+    }
+
+    // Ensure scrcpy server exists on device
+    await this.ensureServerOnDevice();
+
+    // Get installed scrcpy version
+    const scrcpyVersion = await this.getScrcpyVersion();
+
+    return new Promise((resolve, reject) => {
+      const args = [
+        '-s',
+        this.deviceSerial!,
+        'shell',
+        'CLASSPATH=/data/local/tmp/scrcpy-server.jar',
+        'app_process',
+        '/',
+        'com.genymobile.scrcpy.Server',
+        scrcpyVersion,
+        'list_cameras=true',
+      ];
+
+      const proc = spawn('adb', args);
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          // The output will be in stderr (scrcpy server uses Ln.i which outputs to stderr)
+          resolve(stderr || stdout);
+        } else {
+          reject(new Error(`Failed to list cameras (exit code ${code})`));
+        }
+      });
+
+      proc.on('error', (err) => {
+        reject(new Error(`Failed to run list cameras command: ${err.message}`));
+      });
+    });
   }
 
   /**

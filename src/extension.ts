@@ -57,6 +57,11 @@ export function activate(context: vscode.ExtensionContext) {
     provider?.toggleRecording();
   });
 
+  // Register list cameras command
+  const listCamerasCommand = vscode.commands.registerCommand('scrcpy.listCameras', () => {
+    provider?.listCameras();
+  });
+
   context.subscriptions.push(
     startCommand,
     stopCommand,
@@ -65,7 +70,8 @@ export function activate(context: vscode.ExtensionContext) {
     uploadFilesCommand,
     launchAppCommand,
     settingsCommand,
-    toggleRecordingCommand
+    toggleRecordingCommand,
+    listCamerasCommand
   );
 }
 
