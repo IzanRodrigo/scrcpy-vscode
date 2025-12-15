@@ -115,6 +115,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
             'scrcpy.cameraId',
             'scrcpy.cameraSize',
             'scrcpy.cameraFps',
+            'scrcpy.crop',
             'scrcpy.displayId',
           ];
           const needsReconnect = reconnectSettings.some((s) => e.affectsConfiguration(s));
@@ -167,6 +168,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       cameraId: config.get<string>('cameraId', ''),
       cameraSize: config.get<string>('cameraSize', ''),
       cameraFps: config.get<number>('cameraFps', 0),
+      crop: config.get<string>('crop', ''),
       displayId: config.get<number>('displayId', 0),
     };
   }

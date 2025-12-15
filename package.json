@@ -215,10 +215,16 @@
             "order": 7,
             "markdownDescription": "%config.scrcpy.lockVideoOrientation%"
           },
+          "scrcpy.crop": {
+            "type": "string",
+            "default": "",
+            "order": 8,
+            "markdownDescription": "%config.scrcpy.crop%"
+          },
           "scrcpy.displayId": {
             "type": "number",
             "default": 0,
-            "order": 4,
+            "order": 9,
             "markdownDescription": "%config.scrcpy.displayId%"
           }
         }

@@ -53,6 +53,7 @@ export interface ScrcpyConfig {
   cameraId: string;
   cameraSize: string;
   cameraFps: number;
+  crop: string;
   displayId: number;
 }
 
@@ -293,6 +294,7 @@ export class ScrcpyConnection {
         : []),
       ...(newDisplayArg ? [newDisplayArg] : []),
       ...(this.config.displayId !== 0 ? [`display_id=${this.config.displayId}`] : []),
+      ...(this.config.crop && this.config.crop.trim() !== '' ? [`crop=${this.config.crop}`] : []),
       'send_device_meta=true',
       'send_frame_meta=true',
       'send_codec_meta=true',
