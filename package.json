@@ -35,6 +35,24 @@
             "default": "",
             "order": 1,
             "markdownDescription": "%config.scrcpy.apkInstallDefaultPath%"
+          },
+          "scrcpy.clipboardSync": {
+            "type": "boolean",
+            "default": true,
+            "order": 2,
+            "markdownDescription": "%config.scrcpy.clipboardSync%"
+          },
+          "scrcpy.showStats": {
+            "type": "boolean",
+            "default": false,
+            "order": 3,
+            "markdownDescription": "%config.scrcpy.showStats%"
+          },
+          "scrcpy.showExtendedStats": {
+            "type": "boolean",
+            "default": false,
+            "order": 4,
+            "markdownDescription": "%config.scrcpy.showExtendedStats%"
           }
         }
       },
@@ -274,26 +292,8 @@
         }
       },
       {
-        "title": "%config.title.display%",
-        "order": 5,
-        "properties": {
-          "scrcpy.showStats": {
-            "type": "boolean",
-            "default": false,
-            "order": 0,
-            "markdownDescription": "%config.scrcpy.showStats%"
-          },
-          "scrcpy.showExtendedStats": {
-            "type": "boolean",
-            "default": false,
-            "order": 1,
-            "markdownDescription": "%config.scrcpy.showExtendedStats%"
-          }
-        }
-      },
-      {
         "title": "%config.title.input%",
-        "order": 6,
+        "order": 5,
         "properties": {
           "scrcpy.scrollSensitivity": {
             "type": "number",
@@ -319,19 +319,8 @@
         }
       },
       {
-        "title": "%config.title.clipboard%",
-        "order": 7,
-        "properties": {
-          "scrcpy.clipboardSync": {
-            "type": "boolean",
-            "default": true,
-            "markdownDescription": "%config.scrcpy.clipboardSync%"
-          }
-        }
-      },
-      {
         "title": "%config.title.screenshots%",
-        "order": 8,
+        "order": 6,
         "properties": {
           "scrcpy.screenshotSavePath": {
             "type": "string",
@@ -355,7 +344,7 @@
       },
       {
         "title": "%config.title.recording%",
-        "order": 8,
+        "order": 7,
         "properties": {
           "scrcpy.recordingFormat": {
             "type": "string",
@@ -387,7 +376,7 @@
       },
       {
         "title": "%config.title.connection%",
-        "order": 9,
+        "order": 8,
         "properties": {
           "scrcpy.autoConnect": {
             "type": "boolean",

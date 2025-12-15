@@ -21,6 +21,35 @@ Display and control your Android device screen directly within VS Code, similar 
 - Configurable video quality, resolution, and FPS
 - Turn device screen off while mirroring (saves battery)
 
+### Video & Streaming
+
+- **Camera Mirroring** - Mirror device front/back camera instead of screen display
+- **Screen Recording** - Record device screen to WebM or MP4 format
+- **Virtual Display** - Create a separate virtual display instead of mirroring main screen
+- **Multiple Display Support** - Select which physical display to mirror (for devices with external monitors)
+- **H.265/AV1 Codec** - Support for newer video codecs for better quality/compression
+- **Crop Region** - Mirror only a specific portion of the screen
+
+### Input & Control
+
+- **App Launcher** - Launch apps by package name from a searchable list
+- **Quick Panel Access** - Buttons to open notification and settings panels
+- **Gesture Support** - Two-finger pinch-to-zoom on canvas
+- **UHID Keyboard** - Hardware keyboard simulation for better game/app compatibility
+- **Keyboard Shortcuts** - Alt+1 through Alt+9 to switch between device tabs
+
+### Audio
+
+- **Audio Source Selection** - Choose between device output, microphone, or playback capture
+- **Microphone Capture** - Record device microphone audio instead of playback
+
+### Information & Status
+
+- **Device Info Panel** - Show model, Android version, battery, storage on hover
+- **Enhanced Stats** - Display FPS, bitrate, and frame drop statistics
+- **Connection Status** - Visual indicator of connecting/connected/disconnected state per tab
+- **Screenshot Preview** - Show thumbnail preview after taking screenshot with save/copy options
+
 ## Prerequisites
 
 1. **ADB installed and in PATH**
