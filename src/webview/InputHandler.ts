@@ -14,12 +14,24 @@ type InputCallback = (x: number, y: number, action: TouchAction) => void;
 type ScrollCallback = (x: number, y: number, deltaX: number, deltaY: number) => void;
 
 /**
+ * Callback for multi-touch events (pinch gestures)
+ */
+type MultiTouchCallback = (
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  action: TouchAction
+) => void;
+
+/**
  * Handles touch/mouse input on the canvas and forwards to extension
  */
 export class InputHandler {
   private canvas: HTMLCanvasElement;
   private onInput: InputCallback;
   private onScroll?: ScrollCallback;
+  private onMultiTouch?: MultiTouchCallback;
   private isPointerDown = false;
   private pointerId: number | null = null;
 
@@ -34,13 +46,25 @@ export class InputHandler {
   private lastScrollY = 0;
   private scrollRafId: number | null = null;
 
-  // Bound event handlers for cleanup
-  private boundHandlers: Map<string, (e: PointerEvent | WheelEvent | Event) => void> = new Map();
+  // Multi-touch state for pinch gestures
+  private activeTouches: Map<number, { x: number; y: number }> = new Map();
+  private isPinching = false;
+  private initialPinchDistance = 0;
 
-  constructor(canvas: HTMLCanvasElement, onInput: InputCallback, onScroll?: ScrollCallback) {
+  // Bound event handlers for cleanup
+  private boundHandlers: Map<string, (e: PointerEvent | WheelEvent | TouchEvent | Event) => void> =
+    new Map();
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    onInput: InputCallback,
+    onScroll?: ScrollCallback,
+    onMultiTouch?: MultiTouchCallback
+  ) {
     this.canvas = canvas;
     this.onInput = onInput;
     this.onScroll = onScroll;
+    this.onMultiTouch = onMultiTouch;
 
     this.attachEventListeners();
   }
@@ -57,6 +81,11 @@ export class InputHandler {
     const onWheel = (e: Event) => this.onWheelEvent(e as WheelEvent);
     const onContextMenu = (e: Event) => e.preventDefault();
 
+    // Touch event handlers for multi-touch gestures
+    const onTouchStart = (e: Event) => this.onTouchStart(e as TouchEvent);
+    const onTouchMove = (e: Event) => this.onTouchMove(e as TouchEvent);
+    const onTouchEnd = (e: Event) => this.onTouchEnd(e as TouchEvent);
+
     this.canvas.addEventListener('pointerdown', onPointerDown);
     this.canvas.addEventListener('pointermove', onPointerMove);
     this.canvas.addEventListener('pointerup', onPointerUp);
@@ -64,6 +93,12 @@ export class InputHandler {
     this.canvas.addEventListener('pointerleave', onPointerUp);
     this.canvas.addEventListener('wheel', onWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', onContextMenu);
+
+    // Add touch event listeners for multi-touch support
+    this.canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    this.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    this.canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    this.canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     // Store for cleanup
     this.boundHandlers.set('pointerdown', onPointerDown);
@@ -73,6 +108,10 @@ export class InputHandler {
     this.boundHandlers.set('pointerleave', onPointerUp);
     this.boundHandlers.set('wheel', onWheel);
     this.boundHandlers.set('contextmenu', onContextMenu);
+    this.boundHandlers.set('touchstart', onTouchStart);
+    this.boundHandlers.set('touchmove', onTouchMove);
+    this.boundHandlers.set('touchend', onTouchEnd);
+    this.boundHandlers.set('touchcancel', onTouchEnd);
 
     // Prevent default touch behavior
     this.canvas.style.touchAction = 'none';
@@ -249,6 +288,131 @@ export class InputHandler {
   }
 
   /**
+   * Handle touch start event
+   */
+  private onTouchStart(event: TouchEvent) {
+    event.preventDefault();
+
+    // If we have exactly 2 touches, start pinch gesture
+    if (event.touches.length === 2 && this.onMultiTouch) {
+      this.isPinching = true;
+
+      // Store touch positions
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+
+      const coords1 = this.getNormalizedCoordsFromTouch(touch1);
+      const coords2 = this.getNormalizedCoordsFromTouch(touch2);
+
+      this.activeTouches.set(touch1.identifier, coords1);
+      this.activeTouches.set(touch2.identifier, coords2);
+
+      // Calculate initial distance
+      this.initialPinchDistance = this.calculateDistance(coords1, coords2);
+
+      // Send multi-touch down event
+      this.onMultiTouch(coords1.x, coords1.y, coords2.x, coords2.y, 'down');
+    } else if (event.touches.length === 1) {
+      // Single touch - fall back to regular pointer handling (handled by pointer events)
+      this.isPinching = false;
+      this.activeTouches.clear();
+    } else if (event.touches.length > 2) {
+      // More than 2 touches - cancel pinch
+      if (this.isPinching && this.onMultiTouch) {
+        const touchArray = Array.from(this.activeTouches.values());
+        if (touchArray.length === 2) {
+          this.onMultiTouch(
+            touchArray[0].x,
+            touchArray[0].y,
+            touchArray[1].x,
+            touchArray[1].y,
+            'up'
+          );
+        }
+      }
+      this.isPinching = false;
+      this.activeTouches.clear();
+    }
+  }
+
+  /**
+   * Handle touch move event
+   */
+  private onTouchMove(event: TouchEvent) {
+    event.preventDefault();
+
+    // Only process pinch gestures
+    if (this.isPinching && event.touches.length === 2 && this.onMultiTouch) {
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+
+      const coords1 = this.getNormalizedCoordsFromTouch(touch1);
+      const coords2 = this.getNormalizedCoordsFromTouch(touch2);
+
+      // Update stored positions
+      this.activeTouches.set(touch1.identifier, coords1);
+      this.activeTouches.set(touch2.identifier, coords2);
+
+      // Send multi-touch move event
+      this.onMultiTouch(coords1.x, coords1.y, coords2.x, coords2.y, 'move');
+    }
+  }
+
+  /**
+   * Handle touch end event
+   */
+  private onTouchEnd(event: TouchEvent) {
+    event.preventDefault();
+
+    // If we were pinching and now have less than 2 touches, end the gesture
+    if (this.isPinching && this.onMultiTouch) {
+      const touchArray = Array.from(this.activeTouches.values());
+      if (touchArray.length === 2) {
+        this.onMultiTouch(touchArray[0].x, touchArray[0].y, touchArray[1].x, touchArray[1].y, 'up');
+      }
+
+      this.isPinching = false;
+      this.activeTouches.clear();
+      this.initialPinchDistance = 0;
+    }
+
+    // Remove ended touches from active touches
+    const changedTouches = Array.from(event.changedTouches);
+    for (const touch of changedTouches) {
+      this.activeTouches.delete(touch.identifier);
+    }
+  }
+
+  /**
+   * Calculate distance between two points
+   */
+  private calculateDistance(
+    point1: { x: number; y: number },
+    point2: { x: number; y: number }
+  ): number {
+    const dx = point2.x - point1.x;
+    const dy = point2.y - point1.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * Get normalized coordinates (0-1) from touch event
+   */
+  private getNormalizedCoordsFromTouch(touch: Touch): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+
+    // Get position relative to canvas
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    // Normalize to 0-1 range, clamped
+    const normalizedX = Math.max(0, Math.min(1, x / rect.width));
+    const normalizedY = Math.max(0, Math.min(1, y / rect.height));
+
+    return { x: normalizedX, y: normalizedY };
+  }
+
+  /**
    * Set move event throttle rate
    */
   setThrottleRate(ms: number) {
@@ -266,5 +430,7 @@ export class InputHandler {
 
     this.isPointerDown = false;
     this.pointerId = null;
+    this.isPinching = false;
+    this.activeTouches.clear();
   }
 }

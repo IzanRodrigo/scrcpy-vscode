@@ -249,6 +249,18 @@ class DeviceSession {
     this.connection?.sendTouch(x, y, action, screenWidth, screenHeight);
   }
 
+  sendMultiTouch(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    action: 'down' | 'move' | 'up',
+    screenWidth: number,
+    screenHeight: number
+  ): void {
+    this.connection?.sendMultiTouch(x1, y1, x2, y2, action, screenWidth, screenHeight);
+  }
+
   sendKeyDown(keycode: number): void {
     this.connection?.sendKeyDown(keycode);
   }
@@ -894,6 +906,21 @@ export class DeviceManager {
     screenHeight: number
   ): void {
     this.getActiveSession()?.sendTouch(x, y, action, screenWidth, screenHeight);
+  }
+
+  /**
+   * Send multi-touch (pinch gesture) to active device
+   */
+  sendMultiTouch(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    action: 'down' | 'move' | 'up',
+    screenWidth: number,
+    screenHeight: number
+  ): void {
+    this.getActiveSession()?.sendMultiTouch(x1, y1, x2, y2, action, screenWidth, screenHeight);
   }
 
   /**

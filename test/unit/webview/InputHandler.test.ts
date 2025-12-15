@@ -558,4 +558,195 @@ describe('InputHandler', () => {
       expect(preventDefaultSpy).toHaveBeenCalled();
     });
   });
+
+  describe('multi-touch gestures', () => {
+    let multiTouchCallback: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      // Create new handler with multi-touch callback
+      handler.dispose();
+      multiTouchCallback = vi.fn();
+      handler = new InputHandler(canvas, inputCallback, scrollCallback, multiTouchCallback);
+    });
+
+    it('should detect two-finger touch and call multiTouch callback with down action', () => {
+      const touchEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+        ],
+      });
+
+      canvas.dispatchEvent(touchEvent);
+
+      expect(multiTouchCallback).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        'down'
+      );
+    });
+
+    it('should track two-finger movement and call multiTouch callback with move action', () => {
+      // Start with two fingers
+      const touchStart = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+        ],
+      });
+      canvas.dispatchEvent(touchStart);
+
+      multiTouchCallback.mockClear();
+
+      // Move fingers
+      const touchMove = new TouchEvent('touchmove', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 150, clientY: 150 } as Touch,
+          { identifier: 1, clientX: 450, clientY: 350 } as Touch,
+        ],
+      });
+      canvas.dispatchEvent(touchMove);
+
+      expect(multiTouchCallback).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        'move'
+      );
+    });
+
+    it('should end pinch gesture when touches are removed', () => {
+      // Start with two fingers
+      const touchStart = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+        ],
+      });
+      canvas.dispatchEvent(touchStart);
+
+      multiTouchCallback.mockClear();
+
+      // End touches
+      const touchEnd = new TouchEvent('touchend', {
+        bubbles: true,
+        cancelable: true,
+        touches: [],
+        changedTouches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+        ],
+      });
+      canvas.dispatchEvent(touchEnd);
+
+      expect(multiTouchCallback).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        'up'
+      );
+    });
+
+    it('should not trigger multiTouch callback for single touch', () => {
+      const touchEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [{ identifier: 0, clientX: 200, clientY: 200 } as Touch],
+      });
+
+      canvas.dispatchEvent(touchEvent);
+
+      expect(multiTouchCallback).not.toHaveBeenCalled();
+    });
+
+    it('should cancel pinch when more than 2 touches are detected', () => {
+      // Start with two fingers
+      const touchStart = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+        ],
+      });
+      canvas.dispatchEvent(touchStart);
+
+      expect(multiTouchCallback).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        'down'
+      );
+
+      multiTouchCallback.mockClear();
+
+      // Add third finger
+      const touchThird = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+          { identifier: 2, clientX: 500, clientY: 400 } as Touch,
+        ],
+      });
+      canvas.dispatchEvent(touchThird);
+
+      // Should send 'up' action to end gesture
+      expect(multiTouchCallback).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        'up'
+      );
+    });
+
+    it('should prevent default browser zoom behavior on touch events', () => {
+      const touchEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 200, clientY: 200 } as Touch,
+          { identifier: 1, clientX: 400, clientY: 300 } as Touch,
+        ],
+      });
+
+      const preventDefaultSpy = vi.spyOn(touchEvent, 'preventDefault');
+
+      canvas.dispatchEvent(touchEvent);
+
+      expect(preventDefaultSpy).toHaveBeenCalled();
+    });
+
+    it('should normalize touch coordinates correctly', () => {
+      const touchEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: [
+          { identifier: 0, clientX: 0, clientY: 0 } as Touch,
+          { identifier: 1, clientX: 800, clientY: 600 } as Touch,
+        ],
+      });
+
+      canvas.dispatchEvent(touchEvent);
+
+      // First touch at (0,0) should normalize to (0,0)
+      // Second touch at (800,600) should normalize to (1,1)
+      expect(multiTouchCallback).toHaveBeenCalledWith(0, 0, 1, 1, 'down');
+    });
+  });
 });

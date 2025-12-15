@@ -24,6 +24,8 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+*.d.ts
+*.d.ts.map
 
 # Environment
 .env

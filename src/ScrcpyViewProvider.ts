@@ -312,6 +312,10 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     serial?: string;
     x?: number;
     y?: number;
+    x1?: number;
+    y1?: number;
+    x2?: number;
+    y2?: number;
     action?: 'down' | 'move' | 'up';
     screenWidth?: number;
     screenHeight?: number;
@@ -350,6 +354,27 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           message.deltaY !== undefined
         ) {
           this._deviceManager.sendScroll(message.x, message.y, message.deltaX, message.deltaY);
+        }
+        break;
+
+      case 'multiTouch':
+        if (
+          this._deviceManager &&
+          message.x1 !== undefined &&
+          message.y1 !== undefined &&
+          message.x2 !== undefined &&
+          message.y2 !== undefined &&
+          message.action
+        ) {
+          this._deviceManager.sendMultiTouch(
+            message.x1,
+            message.y1,
+            message.x2,
+            message.y2,
+            message.action,
+            message.screenWidth ?? 0,
+            message.screenHeight ?? 0
+          );
         }
         break;
 

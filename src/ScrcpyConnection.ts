@@ -722,6 +722,96 @@ export class ScrcpyConnection {
   }
 
   /**
+   * Send multi-touch event to device (for pinch-to-zoom gestures)
+   * Sends two simultaneous touch events
+   */
+  sendMultiTouch(
+    normalizedX1: number,
+    normalizedY1: number,
+    normalizedX2: number,
+    normalizedY2: number,
+    action: 'down' | 'move' | 'up',
+    _screenWidth: number,
+    _screenHeight: number
+  ): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Convert normalized coordinates to device coordinates
+    const x1 = Math.round(normalizedX1 * this.deviceWidth);
+    const y1 = Math.round(normalizedY1 * this.deviceHeight);
+    const x2 = Math.round(normalizedX2 * this.deviceWidth);
+    const y2 = Math.round(normalizedY2 * this.deviceHeight);
+
+    // Send two touch events with different pointer IDs
+    this.sendMultiTouchEvent(x1, y1, 0, action);
+    this.sendMultiTouchEvent(x2, y2, 1, action);
+  }
+
+  /**
+   * Helper to send individual touch event with specific pointer ID
+   */
+  private sendMultiTouchEvent(
+    x: number,
+    y: number,
+    pointerId: number,
+    action: 'down' | 'move' | 'up'
+  ): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Scrcpy control message format for touch:
+    // type (1) + action (1) + pointer_id (8) + x (4) + y (4) + width (2) + height (2) + pressure (2) + action_button (4) + buttons (4)
+    const msg = Buffer.alloc(32);
+
+    // Type: INJECT_TOUCH_EVENT = 2
+    msg.writeUInt8(ScrcpyProtocol.ControlMessageType.INJECT_TOUCH_EVENT, 0);
+
+    // Action
+    let actionCode: number;
+    switch (action) {
+      case 'down':
+        actionCode = ScrcpyProtocol.MotionEventAction.DOWN;
+        break;
+      case 'move':
+        actionCode = ScrcpyProtocol.MotionEventAction.MOVE;
+        break;
+      case 'up':
+        actionCode = ScrcpyProtocol.MotionEventAction.UP;
+        break;
+    }
+    msg.writeUInt8(actionCode, 1);
+
+    // Pointer ID (8 bytes, use specific ID for multi-touch)
+    msg.writeBigInt64BE(BigInt(pointerId), 2);
+
+    // Position (x, y as 32-bit integers)
+    msg.writeUInt32BE(x, 10);
+    msg.writeUInt32BE(y, 14);
+
+    // Screen width and height (16-bit)
+    msg.writeUInt16BE(this.deviceWidth, 18);
+    msg.writeUInt16BE(this.deviceHeight, 20);
+
+    // Pressure (16-bit, 0xFFFF for full pressure, 0 for up)
+    msg.writeUInt16BE(action === 'up' ? 0 : 0xffff, 22);
+
+    // Action button (4 bytes)
+    msg.writeUInt32BE(0, 24);
+
+    // Buttons (4 bytes)
+    msg.writeUInt32BE(0, 28);
+
+    try {
+      this.controlSocket.write(msg);
+    } catch (error) {
+      console.error('Failed to send multi-touch event:', error);
+    }
+  }
+
+  /**
    * Send scroll event to device.
    * Handles large deltas by splitting them into multiple valid packets.
    */

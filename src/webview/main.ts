@@ -808,6 +808,21 @@ function createDeviceSession(
           screenHeight: canvas.height,
         });
       }
+    },
+    (x1, y1, x2, y2, action) => {
+      if (deviceId === activeDeviceId) {
+        vscode.postMessage({
+          type: 'multiTouch',
+          deviceId,
+          x1,
+          y1,
+          x2,
+          y2,
+          action,
+          screenWidth: canvas.width,
+          screenHeight: canvas.height,
+        });
+      }
     }
   );
 
