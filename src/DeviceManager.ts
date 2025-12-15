@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI, VideoCodecType } from './ScrcpyConnection';
-import { exec, execSync, spawn, ChildProcess } from 'child_process';
+import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
 
 /**
  * Device information
@@ -489,7 +489,7 @@ export class DeviceManager {
    */
   async getAvailableDevices(): Promise<DeviceInfo[]> {
     return new Promise((resolve) => {
-      exec('adb devices -l', (error, stdout) => {
+      execFile('adb', ['devices', '-l'], (error, stdout) => {
         if (error) {
           resolve([]);
           return;
@@ -525,9 +525,9 @@ export class DeviceManager {
    * Get detailed device information via ADB commands
    */
   async getDeviceInfo(serial: string): Promise<DeviceDetailedInfo> {
-    const execAdb = (command: string): Promise<string> => {
+    const execAdb = (args: string[]): Promise<string> => {
       return new Promise((resolve, reject) => {
-        exec(`adb -s ${serial} ${command}`, { timeout: 5000 }, (error, stdout, stderr) => {
+        execFile('adb', ['-s', serial, ...args], { timeout: 5000 }, (error, stdout, stderr) => {
           if (error) {
             reject(new Error(stderr || error.message));
           } else {
@@ -549,14 +549,14 @@ export class DeviceManager {
         resolutionInfo,
         ipInfo,
       ] = await Promise.all([
-        execAdb('shell getprop ro.product.model').catch(() => 'Unknown'),
-        execAdb('shell getprop ro.product.manufacturer').catch(() => 'Unknown'),
-        execAdb('shell getprop ro.build.version.release').catch(() => 'Unknown'),
-        execAdb('shell getprop ro.build.version.sdk').catch(() => '0'),
-        execAdb('shell dumpsys battery').catch(() => ''),
-        execAdb('shell df /data').catch(() => ''),
-        execAdb('shell wm size').catch(() => ''),
-        execAdb('shell ip route | grep wlan').catch(() => ''),
+        execAdb(['shell', 'getprop', 'ro.product.model']).catch(() => 'Unknown'),
+        execAdb(['shell', 'getprop', 'ro.product.manufacturer']).catch(() => 'Unknown'),
+        execAdb(['shell', 'getprop', 'ro.build.version.release']).catch(() => 'Unknown'),
+        execAdb(['shell', 'getprop', 'ro.build.version.sdk']).catch(() => '0'),
+        execAdb(['shell', 'dumpsys', 'battery']).catch(() => ''),
+        execAdb(['shell', 'df', '/data']).catch(() => ''),
+        execAdb(['shell', 'wm', 'size']).catch(() => ''),
+        execAdb(['shell', 'sh', '-c', 'ip route | grep wlan']).catch(() => ''),
       ]);
 
       // Parse battery info
@@ -784,7 +784,7 @@ export class DeviceManager {
     const address = `${ipAddress}:${port}`;
 
     return new Promise((resolve, reject) => {
-      exec(`adb connect ${address}`, (error, stdout, stderr) => {
+      execFile('adb', ['connect', address], (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
           return;
@@ -796,10 +796,14 @@ export class DeviceManager {
         if (output.includes('connected to') || output.includes('already connected')) {
           // Get device model name
           try {
-            const modelOutput = execSync(`adb -s ${address} shell getprop ro.product.model`, {
-              timeout: 5000,
-              encoding: 'utf8',
-            }).trim();
+            const modelOutput = execFileSync(
+              'adb',
+              ['-s', address, 'shell', 'getprop', 'ro.product.model'],
+              {
+                timeout: 5000,
+                encoding: 'utf8',
+              }
+            ).trim();
 
             resolve({
               serial: address,
@@ -847,7 +851,7 @@ export class DeviceManager {
    */
   async disconnectWifi(address: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      exec(`adb disconnect ${address}`, (error, stdout, stderr) => {
+      execFile('adb', ['disconnect', address], (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
           return;
@@ -1362,10 +1366,14 @@ export class DeviceManager {
       if (!this.knownDeviceSerials.has(device.serial) && !this.isDeviceConnected(device.serial)) {
         // Get device model name
         try {
-          const modelOutput = execSync(`adb -s ${device.serial} shell getprop ro.product.model`, {
-            timeout: 5000,
-            encoding: 'utf8',
-          }).trim();
+          const modelOutput = execFileSync(
+            'adb',
+            ['-s', device.serial, 'shell', 'getprop', 'ro.product.model'],
+            {
+              timeout: 5000,
+              encoding: 'utf8',
+            }
+          ).trim();
           device.name = modelOutput || device.serial;
           device.model = modelOutput || undefined;
         } catch {

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec, spawn, ChildProcess } from 'child_process';
+import { execFile, spawn, ChildProcess } from 'child_process';
 import { ScrcpyProtocol } from './ScrcpyProtocol';
 
 // Video codec type
@@ -241,7 +241,7 @@ export class ScrcpyConnection {
    */
   private getDeviceList(): Promise<string[]> {
     return new Promise((resolve, reject) => {
-      exec('adb devices', (error, stdout, _stderr) => {
+      execFile('adb', ['devices'], (error, stdout, _stderr) => {
         if (error) {
           reject(
             new Error(
@@ -292,7 +292,7 @@ export class ScrcpyConnection {
     const localPort = 27183 + Math.floor(Math.random() * 16);
 
     // Setup reverse port forwarding
-    await this.execAdb(`reverse localabstract:scrcpy_${this.scid} tcp:${localPort}`);
+    await this.execAdb(['reverse', `localabstract:scrcpy_${this.scid}`, `tcp:${localPort}`]);
 
     // Create local server to receive connections
     // The server connects separately for video and control sockets
@@ -486,7 +486,7 @@ export class ScrcpyConnection {
   private async getScrcpyVersion(): Promise<string> {
     const scrcpyCmd = this.getScrcpyCommand();
     return new Promise((resolve, reject) => {
-      exec(`"${scrcpyCmd}" --version`, (error, stdout) => {
+      execFile(scrcpyCmd, ['--version'], (error, stdout) => {
         if (error) {
           reject(
             new Error(
@@ -550,19 +550,16 @@ export class ScrcpyConnection {
     }
 
     this.onStatus(vscode.l10n.t('Pushing scrcpy server to device...'));
-    await this.execAdb(`push "${serverPath}" /data/local/tmp/scrcpy-server.jar`);
+    await this.execAdb(['push', serverPath, '/data/local/tmp/scrcpy-server.jar']);
   }
 
   /**
-   * Execute ADB command
+   * Execute ADB command (argv-based, no shell quoting)
    */
-  private execAdb(command: string): Promise<string> {
+  private execAdb(args: string[], options?: { timeout?: number }): Promise<string> {
     return new Promise((resolve, reject) => {
-      const fullCommand = this.deviceSerial
-        ? `adb -s ${this.deviceSerial} ${command}`
-        : `adb ${command}`;
-
-      exec(fullCommand, (error, stdout, stderr) => {
+      const fullArgs = this.deviceSerial ? ['-s', this.deviceSerial, ...args] : args;
+      execFile('adb', fullArgs, { timeout: options?.timeout }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
         } else {
@@ -1378,7 +1375,7 @@ export class ScrcpyConnection {
     if (!this.deviceSerial) {
       throw new Error(vscode.l10n.t('No device connected'));
     }
-    await this.execAdb(`install -r "${filePath}"`);
+    await this.execAdb(['install', '-r', filePath]);
   }
 
   /**
@@ -1391,8 +1388,7 @@ export class ScrcpyConnection {
     if (filePaths.length === 0) {
       return;
     }
-    const quotedPaths = filePaths.map((p) => `"${p}"`).join(' ');
-    await this.execAdb(`push ${quotedPaths} "${destPath}"`);
+    await this.execAdb(['push', ...filePaths, destPath]);
   }
 
   /**
@@ -1530,8 +1526,10 @@ export class ScrcpyConnection {
     }
 
     // List packages
-    const listCmd = thirdPartyOnly ? 'shell pm list packages -3' : 'shell pm list packages';
-    const packagesOutput = await this.execAdb(listCmd);
+    const listArgs = thirdPartyOnly
+      ? ['shell', 'pm', 'list', 'packages', '-3']
+      : ['shell', 'pm', 'list', 'packages'];
+    const packagesOutput = await this.execAdb(listArgs);
     const lines = packagesOutput.trim().split('\n');
     const apps: Array<{ packageName: string; label: string }> = [];
 
@@ -1566,7 +1564,7 @@ export class ScrcpyConnection {
     }
 
     try {
-      const output = await this.execAdb('shell dumpsys display');
+      const output = await this.execAdb(['shell', 'dumpsys', 'display']);
       const displays: Array<{ id: number; info: string }> = [];
 
       // Parse display info from dumpsys output
@@ -1666,7 +1664,7 @@ export class ScrcpyConnection {
     // Cleanup reverse port forwarding
     if (this.deviceSerial) {
       try {
-        await this.execAdb('reverse --remove-all');
+        await this.execAdb(['reverse', '--remove-all']);
       } catch {
         // Ignore cleanup errors
       }

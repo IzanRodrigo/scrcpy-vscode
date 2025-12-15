@@ -57,6 +57,30 @@ export const spawn = vi.fn((): MockChildProcess => {
   return lastMockProcess;
 });
 
+export const execFile = vi.fn(
+  (
+    _file: string,
+    argsOrOptionsOrCallback?:
+      | string[]
+      | Record<string, unknown>
+      | ((error: Error | null, stdout: string, stderr: string) => void),
+    optionsOrCallback?:
+      | Record<string, unknown>
+      | ((error: Error | null, stdout: string, stderr: string) => void),
+    callback?: (error: Error | null, stdout: string, stderr: string) => void
+  ) => {
+    const cb = typeof argsOrOptionsOrCallback === 'function' ? argsOrOptionsOrCallback : callback;
+
+    // Default success - override in tests using mockImplementation
+    if (cb) {
+      setTimeout(() => cb(null, '', ''), 0);
+    }
+
+    const mockProcess = new MockChildProcess();
+    return mockProcess;
+  }
+);
+
 export const exec = vi.fn(
   (
     command: string,
@@ -82,6 +106,11 @@ export const execSync = vi.fn((): Buffer => {
   return Buffer.from('');
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const execFileSync = vi.fn((): any => {
+  return '';
+});
+
 // Helper to get the last created mock process
 export function getLastMockProcess(): MockChildProcess | null {
   return lastMockProcess;
@@ -91,6 +120,8 @@ export function getLastMockProcess(): MockChildProcess | null {
 export function resetMocks() {
   lastMockProcess = null;
   spawn.mockClear();
+  execFile.mockClear();
   exec.mockClear();
   execSync.mockClear();
+  execFileSync.mockClear();
 }
