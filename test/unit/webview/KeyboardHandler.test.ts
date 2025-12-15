@@ -43,30 +43,18 @@ describe('KeyboardHandler', () => {
       expect(handler.isFocused()).toBe(false);
     });
 
-    it('should become focused after click', () => {
+    it('should become focused after click and update canvas attributes', () => {
       canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       expect(handler.isFocused()).toBe(true);
-    });
-
-    it('should add keyboard-focused class when focused', () => {
-      handler.setFocused(true);
       expect(canvas.classList.contains('keyboard-focused')).toBe(true);
-    });
-
-    it('should remove keyboard-focused class when unfocused', () => {
-      handler.setFocused(true);
-      handler.setFocused(false);
-      expect(canvas.classList.contains('keyboard-focused')).toBe(false);
-    });
-
-    it('should set canvas tabIndex to 0 when focused', () => {
-      handler.setFocused(true);
       expect(canvas.tabIndex).toBe(0);
     });
 
-    it('should set canvas tabIndex to -1 when unfocused', () => {
+    it('should unfocus and reset canvas attributes', () => {
       handler.setFocused(true);
       handler.setFocused(false);
+      expect(handler.isFocused()).toBe(false);
+      expect(canvas.classList.contains('keyboard-focused')).toBe(false);
       expect(canvas.tabIndex).toBe(-1);
     });
 
@@ -83,46 +71,32 @@ describe('KeyboardHandler', () => {
       handler.setFocused(true);
     });
 
-    it('should buffer regular character input', () => {
+    it('should buffer regular character input and flush after timeout', () => {
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-
-      // Should not be called immediately (buffered)
       expect(textCallback).not.toHaveBeenCalled();
-
-      // Flush buffer timer (50ms)
       vi.advanceTimersByTime(50);
-
       expect(textCallback).toHaveBeenCalledWith('a');
     });
 
-    it('should batch multiple characters', () => {
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', bubbles: true }));
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', bubbles: true }));
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }));
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }));
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', bubbles: true }));
-
+    it('should batch multiple characters into single callback', () => {
+      'hello'.split('').forEach((char) => {
+        canvas.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+      });
       vi.advanceTimersByTime(50);
-
       expect(textCallback).toHaveBeenCalledWith('hello');
     });
 
     it('should flush buffer on focus loss', () => {
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', bubbles: true }));
-
       handler.setFocused(false);
-
       expect(textCallback).toHaveBeenCalledWith('ab');
     });
 
-    it('should flush buffer when reaching max length', () => {
-      // Type 300 characters (max length)
+    it('should flush buffer when reaching max length (300)', () => {
       for (let i = 0; i < 300; i++) {
         canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true }));
       }
-
-      // Should flush immediately at max length, not wait for timer
       expect(textCallback).toHaveBeenCalledWith('x'.repeat(300));
     });
   });
@@ -132,52 +106,25 @@ describe('KeyboardHandler', () => {
       handler.setFocused(true);
     });
 
-    it('should send Enter as keycode, not text', () => {
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ENTER, AMETA.NONE, 'down');
+    it.each([
+      ['Enter', ANDROID_KEYCODES.ENTER],
+      ['Backspace', ANDROID_KEYCODES.DEL],
+      ['Tab', ANDROID_KEYCODES.TAB],
+      ['Escape', ANDROID_KEYCODES.ESCAPE],
+      ['ArrowUp', ANDROID_KEYCODES.DPAD_UP],
+      ['ArrowDown', ANDROID_KEYCODES.DPAD_DOWN],
+      ['ArrowLeft', ANDROID_KEYCODES.DPAD_LEFT],
+      ['ArrowRight', ANDROID_KEYCODES.DPAD_RIGHT],
+    ])('should send %s as keycode %d', (key, expectedKeycode) => {
+      canvas.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      expect(keycodeCallback).toHaveBeenCalledWith(expectedKeycode, AMETA.NONE, 'down');
       expect(textCallback).not.toHaveBeenCalled();
-    });
-
-    it('should send Backspace as keycode', () => {
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
-
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.DEL, AMETA.NONE, 'down');
-    });
-
-    it('should send Tab as keycode', () => {
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.TAB, AMETA.NONE, 'down');
-    });
-
-    it('should send Escape as keycode', () => {
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ESCAPE, AMETA.NONE, 'down');
-    });
-
-    it('should send arrow keys as keycodes', () => {
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.DPAD_UP, AMETA.NONE, 'down');
-
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.DPAD_DOWN, AMETA.NONE, 'down');
-
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.DPAD_LEFT, AMETA.NONE, 'down');
-
-      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.DPAD_RIGHT, AMETA.NONE, 'down');
     });
 
     it('should flush text buffer before sending special key', () => {
       vi.useFakeTimers();
-
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-
-      // Text should be flushed before Enter
       expect(textCallback).toHaveBeenCalledWith('a');
       expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ENTER, AMETA.NONE, 'down');
     });
@@ -188,71 +135,35 @@ describe('KeyboardHandler', () => {
       handler.setFocused(true);
     });
 
-    it('should include Shift in metastate', () => {
+    it.each([
+      ['Shift', 'shiftKey', AMETA.SHIFT_ON],
+      ['Alt', 'altKey', AMETA.ALT_ON],
+      ['Ctrl', 'ctrlKey', AMETA.CTRL_ON],
+    ])('should include %s in metastate', (_name, modifierProp, metaFlag) => {
       canvas.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true })
-      );
-
-      expect(keycodeCallback).toHaveBeenCalledWith(
-        ANDROID_KEYCODES.ENTER,
-        expect.any(Number),
-        'down'
+        new KeyboardEvent('keydown', { key: 'Enter', [modifierProp]: true, bubbles: true })
       );
       const [, metastate] = keycodeCallback.mock.calls[0];
-      expect(metastate & AMETA.SHIFT_ON).toBeTruthy();
+      expect(metastate & metaFlag).toBeTruthy();
     });
 
-    it('should include Alt in metastate', () => {
+    it('should handle multiple modifiers combined', () => {
       canvas.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Enter', altKey: true, bubbles: true })
+        new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, shiftKey: true, bubbles: true })
       );
-
-      expect(keycodeCallback).toHaveBeenCalledWith(
-        ANDROID_KEYCODES.ENTER,
-        expect.any(Number),
-        'down'
-      );
-      const [, metastate] = keycodeCallback.mock.calls[0];
-      expect(metastate & AMETA.ALT_ON).toBeTruthy();
-    });
-
-    it('should include Ctrl in metastate', () => {
-      canvas.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true })
-      );
-
-      expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.A, expect.any(Number), 'down');
       const [, metastate] = keycodeCallback.mock.calls[0];
       expect(metastate & AMETA.CTRL_ON).toBeTruthy();
+      expect(metastate & AMETA.SHIFT_ON).toBeTruthy();
     });
 
     it('should send Ctrl+letter as keycode, not text', () => {
       vi.useFakeTimers();
-
       canvas.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true })
       );
-
       vi.advanceTimersByTime(50);
-
       expect(keycodeCallback).toHaveBeenCalled();
       expect(textCallback).not.toHaveBeenCalled();
-    });
-
-    it('should handle multiple modifiers', () => {
-      canvas.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'a',
-          ctrlKey: true,
-          shiftKey: true,
-          bubbles: true,
-        })
-      );
-
-      expect(keycodeCallback).toHaveBeenCalled();
-      const [, metastate] = keycodeCallback.mock.calls[0];
-      expect(metastate & AMETA.CTRL_ON).toBeTruthy();
-      expect(metastate & AMETA.SHIFT_ON).toBeTruthy();
     });
   });
 
@@ -261,48 +172,40 @@ describe('KeyboardHandler', () => {
       handler.setFocused(true);
     });
 
-    it('should call pasteCallback on Ctrl+V', () => {
+    it('should call pasteCallback on Ctrl+V (case insensitive)', () => {
       canvas.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true })
       );
-
       expect(pasteCallback).toHaveBeenCalled();
       expect(keycodeCallback).not.toHaveBeenCalled();
-    });
 
-    it('should call copyCallback on Ctrl+C', () => {
-      canvas.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })
-      );
-
-      expect(copyCallback).toHaveBeenCalled();
-      expect(keycodeCallback).not.toHaveBeenCalled();
-    });
-
-    it('should handle uppercase V for paste', () => {
+      pasteCallback.mockClear();
       canvas.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'V', ctrlKey: true, bubbles: true })
       );
-
       expect(pasteCallback).toHaveBeenCalled();
     });
 
-    it('should handle uppercase C for copy', () => {
+    it('should call copyCallback on Ctrl+C (case insensitive)', () => {
+      canvas.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })
+      );
+      expect(copyCallback).toHaveBeenCalled();
+      expect(keycodeCallback).not.toHaveBeenCalled();
+
+      copyCallback.mockClear();
       canvas.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'C', ctrlKey: true, bubbles: true })
       );
-
       expect(copyCallback).toHaveBeenCalled();
     });
 
-    it('should flush text buffer before paste', () => {
+    it('should flush text buffer before clipboard operation', () => {
       vi.useFakeTimers();
-
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
       canvas.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true })
       );
-
       expect(textCallback).toHaveBeenCalledWith('a');
       expect(pasteCallback).toHaveBeenCalled();
     });
@@ -316,34 +219,22 @@ describe('KeyboardHandler', () => {
     it('should send keyup for special keys', () => {
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       canvas.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
-
       expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ENTER, AMETA.NONE, 'down');
       expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ENTER, AMETA.NONE, 'up');
     });
 
     it('should release all pressed keys on focus loss', () => {
-      // Press multiple keys
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-
       keycodeCallback.mockClear();
-
-      // Lose focus
       handler.setFocused(false);
-
-      // Should have released all pressed keys
       expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ENTER, AMETA.NONE, 'up');
       expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.TAB, AMETA.NONE, 'up');
     });
 
-    it('should track pressed keys correctly', () => {
+    it('should ignore keyup for already-released keys', () => {
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       canvas.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
-
-      // Key up after key down should work
-      expect(keycodeCallback).toHaveBeenCalledTimes(2);
-
-      // Second key up for same key should be ignored (key already released)
       keycodeCallback.mockClear();
       canvas.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
       expect(keycodeCallback).not.toHaveBeenCalled();
@@ -351,95 +242,65 @@ describe('KeyboardHandler', () => {
   });
 
   describe('dispose', () => {
-    it('should flush text buffer on dispose', () => {
+    it('should flush text buffer and release keys on dispose', () => {
       vi.useFakeTimers();
       handler.setFocused(true);
-
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-      handler.dispose();
-
-      expect(textCallback).toHaveBeenCalledWith('a');
-    });
-
-    it('should release all pressed keys on dispose', () => {
-      handler.setFocused(true);
-
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       keycodeCallback.mockClear();
 
       handler.dispose();
 
+      expect(textCallback).toHaveBeenCalledWith('a');
       expect(keycodeCallback).toHaveBeenCalledWith(ANDROID_KEYCODES.ENTER, AMETA.NONE, 'up');
-    });
-
-    it('should remove keyboard-focused class on dispose', () => {
-      handler.setFocused(true);
-      handler.dispose();
-
       expect(canvas.classList.contains('keyboard-focused')).toBe(false);
     });
 
     it('should stop processing events after dispose', () => {
       handler.dispose();
-
       canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-
-      // No callbacks should be triggered
       expect(textCallback).not.toHaveBeenCalled();
       expect(keycodeCallback).not.toHaveBeenCalled();
     });
   });
 
   describe('optional callbacks', () => {
-    it('should work without paste callback', () => {
+    it('should work without paste/copy callbacks', () => {
       handler.dispose();
       handler = new KeyboardHandler(canvas, textCallback, keycodeCallback);
       handler.setFocused(true);
 
-      // Should not throw
-      expect(() =>
+      expect(() => {
         canvas.dispatchEvent(
           new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true })
-        )
-      ).not.toThrow();
-    });
-
-    it('should work without copy callback', () => {
-      handler.dispose();
-      handler = new KeyboardHandler(canvas, textCallback, keycodeCallback);
-      handler.setFocused(true);
-
-      // Should not throw
-      expect(() =>
+        );
         canvas.dispatchEvent(
           new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })
-        )
-      ).not.toThrow();
+        );
+      }).not.toThrow();
     });
   });
 });
 
 describe('AndroidKeys', () => {
   describe('ANDROID_KEYCODES', () => {
-    it('should have correct values for common keys', () => {
-      expect(ANDROID_KEYCODES.ENTER).toBe(66);
-      expect(ANDROID_KEYCODES.DEL).toBe(67);
-      expect(ANDROID_KEYCODES.TAB).toBe(61);
-      expect(ANDROID_KEYCODES.ESCAPE).toBe(111);
+    it.each([
+      ['ENTER', 66],
+      ['DEL', 67],
+      ['TAB', 61],
+      ['ESCAPE', 111],
+      ['DPAD_UP', 19],
+      ['DPAD_DOWN', 20],
+      ['DPAD_LEFT', 21],
+      ['DPAD_RIGHT', 22],
+      ['A', 29],
+      ['Z', 54],
+    ])('should have %s = %d', (key, expected) => {
+      expect(ANDROID_KEYCODES[key as keyof typeof ANDROID_KEYCODES]).toBe(expected);
     });
 
-    it('should have correct values for arrow keys', () => {
-      expect(ANDROID_KEYCODES.DPAD_UP).toBe(19);
-      expect(ANDROID_KEYCODES.DPAD_DOWN).toBe(20);
-      expect(ANDROID_KEYCODES.DPAD_LEFT).toBe(21);
-      expect(ANDROID_KEYCODES.DPAD_RIGHT).toBe(22);
-    });
-
-    it('should have correct values for letter keys A-Z', () => {
-      expect(ANDROID_KEYCODES.A).toBe(29);
-      expect(ANDROID_KEYCODES.Z).toBe(54);
-      // All letters should be consecutive from A (29) to Z (54)
+    it('should have consecutive letter keycodes A-Z', () => {
       expect(ANDROID_KEYCODES.Z - ANDROID_KEYCODES.A).toBe(25);
     });
   });
@@ -461,25 +322,21 @@ describe('AndroidKeys', () => {
   });
 
   describe('KEY_TO_KEYCODE', () => {
-    it('should map browser key names to Android keycodes', () => {
-      expect(KEY_TO_KEYCODE['Enter']).toBe(ANDROID_KEYCODES.ENTER);
-      expect(KEY_TO_KEYCODE['Backspace']).toBe(ANDROID_KEYCODES.DEL);
-      expect(KEY_TO_KEYCODE['Tab']).toBe(ANDROID_KEYCODES.TAB);
-      expect(KEY_TO_KEYCODE['Escape']).toBe(ANDROID_KEYCODES.ESCAPE);
-    });
-
-    it('should map arrow keys correctly', () => {
-      expect(KEY_TO_KEYCODE['ArrowUp']).toBe(ANDROID_KEYCODES.DPAD_UP);
-      expect(KEY_TO_KEYCODE['ArrowDown']).toBe(ANDROID_KEYCODES.DPAD_DOWN);
-      expect(KEY_TO_KEYCODE['ArrowLeft']).toBe(ANDROID_KEYCODES.DPAD_LEFT);
-      expect(KEY_TO_KEYCODE['ArrowRight']).toBe(ANDROID_KEYCODES.DPAD_RIGHT);
-    });
-
-    it('should map page navigation keys', () => {
-      expect(KEY_TO_KEYCODE['PageUp']).toBe(ANDROID_KEYCODES.PAGE_UP);
-      expect(KEY_TO_KEYCODE['PageDown']).toBe(ANDROID_KEYCODES.PAGE_DOWN);
-      expect(KEY_TO_KEYCODE['Home']).toBe(ANDROID_KEYCODES.MOVE_HOME);
-      expect(KEY_TO_KEYCODE['End']).toBe(ANDROID_KEYCODES.MOVE_END);
+    it.each([
+      ['Enter', ANDROID_KEYCODES.ENTER],
+      ['Backspace', ANDROID_KEYCODES.DEL],
+      ['Tab', ANDROID_KEYCODES.TAB],
+      ['Escape', ANDROID_KEYCODES.ESCAPE],
+      ['ArrowUp', ANDROID_KEYCODES.DPAD_UP],
+      ['ArrowDown', ANDROID_KEYCODES.DPAD_DOWN],
+      ['ArrowLeft', ANDROID_KEYCODES.DPAD_LEFT],
+      ['ArrowRight', ANDROID_KEYCODES.DPAD_RIGHT],
+      ['PageUp', ANDROID_KEYCODES.PAGE_UP],
+      ['PageDown', ANDROID_KEYCODES.PAGE_DOWN],
+      ['Home', ANDROID_KEYCODES.MOVE_HOME],
+      ['End', ANDROID_KEYCODES.MOVE_END],
+    ])('should map %s to correct keycode', (browserKey, androidKeycode) => {
+      expect(KEY_TO_KEYCODE[browserKey]).toBe(androidKeycode);
     });
   });
 });

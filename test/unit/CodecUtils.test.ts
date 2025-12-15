@@ -1,112 +1,121 @@
 import { describe, it, expect } from 'vitest';
-import { CodecUtils, CodecUtils, NALUnitType } from '../../src/webview/CodecUtils';
-import { INVALID_DATA } from '../fixtures/h264-samples';
+import {
+  CodecUtils,
+  NALUnitType,
+  H264NALUnitType,
+  H265NALUnitType,
+} from '../../src/webview/CodecUtils';
+import { INVALID_DATA, H264_SPS_1920x1080 } from '../fixtures/h264-samples';
 
 describe('CodecUtils', () => {
-  describe('NALUnitType enum', () => {
-    it('should have correct NAL unit type values', () => {
-      expect(NALUnitType.IDR).toBe(5);
-      expect(NALUnitType.SPS).toBe(7);
-      expect(NALUnitType.PPS).toBe(8);
+  describe('NAL unit type enums', () => {
+    it('should have correct H.264 NAL unit type values (NALUnitType is alias)', () => {
+      // NALUnitType is a backward-compatible alias for H264NALUnitType
+      expect(NALUnitType.IDR).toBe(H264NALUnitType.IDR);
+      expect(NALUnitType.SPS).toBe(H264NALUnitType.SPS);
+      expect(NALUnitType.PPS).toBe(H264NALUnitType.PPS);
+      // Standard H.264 NAL types
+      expect(H264NALUnitType.IDR).toBe(5);
+      expect(H264NALUnitType.SPS).toBe(7);
+      expect(H264NALUnitType.PPS).toBe(8);
+    });
+
+    it('should have correct H.265 NAL unit type values', () => {
+      expect(H265NALUnitType.VPS).toBe(32);
+      expect(H265NALUnitType.SPS).toBe(33);
+      expect(H265NALUnitType.PPS).toBe(34);
+      expect(H265NALUnitType.IDR_W_RADL).toBe(19);
+      expect(H265NALUnitType.IDR_N_LP).toBe(20);
     });
   });
 
   describe('parseH264SPSDimensions', () => {
-    it('should return null for empty data', () => {
-      const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.empty);
+    it.each([
+      ['empty data', INVALID_DATA.empty],
+      ['data too short', INVALID_DATA.tooShort],
+      ['data without start code', INVALID_DATA.noStartCode],
+      ['PPS only (no SPS)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0x80])],
+    ])('should return null for %s', (_name, data) => {
+      const result = CodecUtils.parseH264SPSDimensions(data);
       expect(result).toBeNull();
     });
 
-    it('should return null for data too short to contain valid NAL', () => {
-      const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.tooShort);
-      expect(result).toBeNull();
-    });
-
-    it('should return null for data without start code', () => {
-      const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.noStartCode);
-      expect(result).toBeNull();
-    });
-
-    it('should handle truncated SPS data gracefully', () => {
-      // Truncated data may either return null or throw - either behavior is acceptable
-      // as long as it doesn't crash the application
+    it('should handle truncated SPS data without crashing', () => {
       expect(() => {
-        const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.truncated);
-        // If it returns, it should be null or a valid dimension object
-        expect(
-          result === null ||
-            (typeof result?.width === 'number' && typeof result?.height === 'number')
-        ).toBe(true);
+        CodecUtils.parseH264SPSDimensions(INVALID_DATA.truncated);
       }).not.toThrow();
     });
 
-    it('should return null when no SPS NAL unit is found', () => {
-      // Only contains PPS (NAL type 8), not SPS (NAL type 7)
-      const ppsOnly = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0x80]);
-      const result = CodecUtils.parseH264SPSDimensions(ppsOnly);
-      expect(result).toBeNull();
-    });
-
-    it('should find SPS with 3-byte start code', () => {
-      // 3-byte start code: 0x00 0x00 0x01
+    it('should find and parse SPS with 3-byte start code', () => {
       const spsWithShortStartCode = new Uint8Array([
         0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5, 0xc0,
         0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6, 0x58,
       ]);
-      const result = CodecUtils.parseH264SPSDimensions(spsWithShortStartCode);
-      // Should at least not return null for valid SPS format
-      // Actual dimensions depend on the h264-sps-parser library's parsing
-      expect(
-        result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
-      ).toBe(true);
+      // Parser may succeed or fail depending on SPS validity - but should not crash
+      expect(() => CodecUtils.parseH264SPSDimensions(spsWithShortStartCode)).not.toThrow();
     });
 
-    it('should find SPS with 4-byte start code', () => {
-      // 4-byte start code: 0x00 0x00 0x00 0x01
-      const spsWithLongStartCode = new Uint8Array([
-        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5,
-        0xc0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6,
+    it('should find SPS when preceded by other NAL units', () => {
+      // Buffer with PPS first (type 8), then SPS (type 7)
+      const mixedData = new Uint8Array([
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x68,
+        0xee,
+        0x3c,
+        0x80, // PPS
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x67,
+        0x64,
+        0x00,
+        0x28, // SPS header
+        0xac,
+        0xd9,
+        0x40,
+        0x78,
+        0x02,
+        0x27,
+        0xe5,
+        0xc0,
+        0x44,
+        0x00,
+        0x00,
+        0x03,
+        0x00,
+        0x04,
+        0x00,
+        0x00,
+        0x03,
+        0x00,
+        0xf0,
+        0x3c,
+        0x60,
+        0xc6,
         0x58,
       ]);
-      const result = CodecUtils.parseH264SPSDimensions(spsWithLongStartCode);
-      // Should at least not return null for valid SPS format
-      expect(
-        result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
-      ).toBe(true);
-    });
-
-    it('should identify NAL type correctly from header byte', () => {
-      // NAL type is in bits 0-4 of the NAL header byte
-      // 0x67 = 0b01100111 -> type = 0b00111 = 7 (SPS)
-      const nalHeader = 0x67;
-      const nalType = nalHeader & 0x1f;
-      expect(nalType).toBe(NALUnitType.SPS);
+      // Should find SPS even when not first NAL unit
+      expect(() => CodecUtils.parseH264SPSDimensions(mixedData)).not.toThrow();
     });
   });
 
   describe('extractH264SPSInfo', () => {
-    it('should return null for empty data', () => {
-      const result = CodecUtils.extractH264SPSInfo(INVALID_DATA.empty);
-      expect(result).toBeNull();
+    it('should return null for data without valid SPS', () => {
+      expect(CodecUtils.extractH264SPSInfo(INVALID_DATA.empty)).toBeNull();
+      expect(CodecUtils.extractH264SPSInfo(INVALID_DATA.noStartCode)).toBeNull();
     });
 
-    it('should return null for data without SPS', () => {
-      const result = CodecUtils.extractH264SPSInfo(INVALID_DATA.noStartCode);
-      expect(result).toBeNull();
-    });
-
-    it('should extract profile, constraint, and level from valid SPS', () => {
-      // Create an SPS with known profile/level values
+    it('should extract profile/constraint/level structure from valid SPS', () => {
       const sps = new Uint8Array([
         0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5,
         0xc0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6,
         0x58,
       ]);
-
       const result = CodecUtils.extractH264SPSInfo(sps);
-
-      // Check that we get back an object with the expected shape
-      // Actual values depend on the h264-sps-parser library
       if (result !== null) {
         expect(typeof result.profile).toBe('number');
         expect(typeof result.constraint).toBe('number');
@@ -115,62 +124,105 @@ describe('CodecUtils', () => {
     });
   });
 
-  describe('findSPS (private, tested via public methods)', () => {
-    it('should skip non-SPS NAL units', () => {
-      // Buffer with PPS first, then SPS
-      const mixedData = new Uint8Array([
-        // PPS (type 8)
-        0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0x80,
-        // SPS (type 7)
-        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5,
-        0xc0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6,
-        0x58,
-      ]);
-
-      const result = CodecUtils.parseH264SPSDimensions(mixedData);
-      // Should find the SPS even when PPS comes first
-      expect(
-        result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
-      ).toBe(true);
+  describe('detectCodec', () => {
+    it('should detect H.264 codec from SPS NAL unit', () => {
+      expect(CodecUtils.detectCodec(H264_SPS_1920x1080)).toBe('h264');
     });
 
-    it('should handle multiple start codes in data', () => {
-      // Data with multiple NAL units
-      const multiNAL = new Uint8Array([
-        // First NAL (non-SPS, type 1)
-        0x00, 0x00, 0x00, 0x01, 0x41, 0x00, 0x00,
-        // Second NAL (SPS, type 7)
-        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5,
-        0xc0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6,
-        0x58,
-        // Third NAL (PPS, type 8)
-        0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0x80,
-      ]);
+    it.each([
+      ['VPS (type 32)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0x0c, 0x01])],
+      ['SPS (type 33)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x42, 0x01, 0x01, 0x01])],
+      ['PPS (type 34)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x44, 0x01, 0x00, 0x00])],
+    ])('should detect H.265 codec from %s', (_name, data) => {
+      expect(CodecUtils.detectCodec(data)).toBe('h265');
+    });
 
-      const result = CodecUtils.parseH264SPSDimensions(multiNAL);
-      // Should find the SPS in the middle
-      expect(
-        result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
-      ).toBe(true);
+    it.each([
+      ['no start code', INVALID_DATA.noStartCode],
+      ['empty data', INVALID_DATA.empty],
+      ['non-config NAL (type 1)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x21, 0x00, 0x00])],
+    ])('should return null for %s', (_name, data) => {
+      expect(CodecUtils.detectCodec(data)).toBeNull();
     });
   });
 
-  describe('error handling', () => {
-    it('should not throw on invalid data', () => {
-      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.empty)).not.toThrow();
-      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.tooShort)).not.toThrow();
-      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.noStartCode)).not.toThrow();
-      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.truncated)).not.toThrow();
+  describe('parseConfigDimensions', () => {
+    it('should return null for H.265 and AV1 (not implemented)', () => {
+      const h265Vps = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0x0c, 0x01, 0xff, 0xff]);
+      expect(CodecUtils.parseConfigDimensions(h265Vps, 'h265')).toBeNull();
+      expect(CodecUtils.parseConfigDimensions(new Uint8Array([0x0a, 0x00]), 'av1')).toBeNull();
     });
 
-    it('should not throw on extractH264SPSInfo with invalid data', () => {
-      expect(() => CodecUtils.extractH264SPSInfo(INVALID_DATA.empty)).not.toThrow();
-      expect(() => CodecUtils.extractH264SPSInfo(INVALID_DATA.tooShort)).not.toThrow();
+    it('should return null when codec cannot be detected', () => {
+      expect(CodecUtils.parseConfigDimensions(INVALID_DATA.noStartCode)).toBeNull();
     });
 
-    it('should handle buffer with only start codes', () => {
-      const onlyStartCodes = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01]);
-      expect(() => CodecUtils.parseH264SPSDimensions(onlyStartCodes)).not.toThrow();
+    it('should attempt H.264 parsing when codec specified or detected', () => {
+      // Should not throw - may return null or valid dimensions
+      expect(() => CodecUtils.parseConfigDimensions(H264_SPS_1920x1080, 'h264')).not.toThrow();
+      expect(() => CodecUtils.parseConfigDimensions(H264_SPS_1920x1080)).not.toThrow();
+    });
+  });
+
+  describe('containsKeyFrame', () => {
+    describe('H.264', () => {
+      it.each([
+        ['4-byte start code', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x00])],
+        ['3-byte start code', new Uint8Array([0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x00])],
+      ])('should detect IDR frame with %s', (_name, data) => {
+        expect(CodecUtils.containsKeyFrame(data, 'h264')).toBe(true);
+      });
+
+      it('should not detect non-IDR frame as keyframe', () => {
+        const nonIdr = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x41, 0x9a, 0x24, 0x00]);
+        expect(CodecUtils.containsKeyFrame(nonIdr, 'h264')).toBe(false);
+      });
+    });
+
+    describe('H.265', () => {
+      it.each([
+        ['IDR_W_RADL (type 19)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x26, 0x01, 0x00, 0x00])],
+        ['IDR_N_LP (type 20)', new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x28, 0x01, 0x00, 0x00])],
+      ])('should detect %s as keyframe', (_name, data) => {
+        expect(CodecUtils.containsKeyFrame(data, 'h265')).toBe(true);
+      });
+
+      it('should not detect P-slice as keyframe', () => {
+        const nonIdr = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x02, 0x01, 0x00, 0x00]);
+        expect(CodecUtils.containsKeyFrame(nonIdr, 'h265')).toBe(false);
+      });
+    });
+
+    it.each([
+      ['AV1 data', new Uint8Array([0x0a, 0x00, 0x00, 0x00]), 'av1'],
+      ['empty data (H.264)', INVALID_DATA.empty, 'h264'],
+      ['too short data (H.264)', INVALID_DATA.tooShort, 'h264'],
+    ])('should return false for %s', (_name, data, codec) => {
+      expect(CodecUtils.containsKeyFrame(data, codec as 'h264' | 'h265' | 'av1')).toBe(false);
+    });
+  });
+
+  describe('generateCodecString', () => {
+    it('should generate codec strings for each codec type', () => {
+      expect(CodecUtils.generateCodecString('h264')).toBe('avc1.42001f');
+      expect(CodecUtils.generateCodecString('h265')).toBe('hev1.1.6.L93.B0');
+      expect(CodecUtils.generateCodecString('av1')).toBe('av01.0.05M.08');
+    });
+
+    it('should generate H.264 codec string from SPS profile/level info', () => {
+      const result = CodecUtils.generateCodecString('h264', H264_SPS_1920x1080);
+      expect(result).toMatch(/^avc1\.[0-9a-f]{6}$/);
+    });
+
+    it('should fallback to default H.264 codec string for invalid config', () => {
+      expect(CodecUtils.generateCodecString('h264', INVALID_DATA.noStartCode)).toBe('avc1.42001f');
+    });
+  });
+
+  describe('backward compatibility', () => {
+    it('should export H264Utils as alias for CodecUtils', async () => {
+      const { H264Utils } = await import('../../src/webview/CodecUtils');
+      expect(H264Utils).toBe(CodecUtils);
     });
   });
 });
