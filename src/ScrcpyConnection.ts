@@ -48,6 +48,7 @@ export interface ScrcpyConfig {
   cameraId: string;
   cameraSize: string;
   cameraFps: number;
+  displayId: number;
 }
 
 // Type for clipboard callback
@@ -282,6 +283,7 @@ export class ScrcpyConnection {
           ]
         : []),
       ...(newDisplayArg ? [newDisplayArg] : []),
+      ...(this.config.displayId !== 0 ? [`display_id=${this.config.displayId}`] : []),
       'send_device_meta=true',
       'send_frame_meta=true',
       'send_codec_meta=true',
@@ -1314,6 +1316,77 @@ export class ScrcpyConnection {
     apps.sort((a, b) => a.packageName.localeCompare(b.packageName));
 
     return apps;
+  }
+
+  /**
+   * List available displays on the device
+   * Returns array of display info objects with id and basic info
+   */
+  async listDisplays(): Promise<Array<{ id: number; info: string }>> {
+    if (!this.deviceSerial) {
+      throw new Error(vscode.l10n.t('No device connected'));
+    }
+
+    try {
+      const output = await this.execAdb('shell dumpsys display');
+      const displays: Array<{ id: number; info: string }> = [];
+
+      // Parse display info from dumpsys output
+      // Look for lines like: "mDisplayId=0" or "Display Id: 0"
+      const lines = output.split('\n');
+      const displayIdRegex = /mDisplayId[=\s]+(\d+)/i;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const match = line.match(displayIdRegex);
+
+        if (match) {
+          const displayId = parseInt(match[1], 10);
+
+          // Try to find display name or info in nearby lines
+          let displayInfo = `Display ${displayId}`;
+
+          // Look ahead for display mode or resolution info
+          for (let j = i; j < Math.min(i + 10, lines.length); j++) {
+            const infoLine = lines[j];
+
+            // Look for resolution info
+            if (infoLine.includes('mBaseDisplayInfo') || infoLine.includes('DisplayInfo')) {
+              const resMatch = infoLine.match(/(\d{3,4})\s*x\s*(\d{3,4})/);
+              if (resMatch) {
+                displayInfo = `Display ${displayId} (${resMatch[1]}x${resMatch[2]})`;
+                break;
+              }
+            }
+
+            // Look for display name
+            if (infoLine.includes('name=') || infoLine.includes('mName=')) {
+              const nameMatch = infoLine.match(/[mM]?[nN]ame[=\s]+["']?([^"',\n]+)["']?/);
+              if (nameMatch && nameMatch[1].trim()) {
+                displayInfo = `Display ${displayId}: ${nameMatch[1].trim()}`;
+                break;
+              }
+            }
+          }
+
+          displays.push({ id: displayId, info: displayInfo });
+        }
+      }
+
+      // If no displays found, return default display
+      if (displays.length === 0) {
+        displays.push({ id: 0, info: 'Display 0 (Main)' });
+      }
+
+      // Sort by display ID
+      displays.sort((a, b) => a.id - b.id);
+
+      return displays;
+    } catch (error) {
+      console.error('Failed to list displays:', error);
+      // Return default display on error
+      return [{ id: 0, info: 'Display 0 (Main)' }];
+    }
   }
 
   /**

@@ -112,5 +112,14 @@
   "Start recording": "Start recording",
   "Stop recording": "Stop recording",
   "Recording": "Recording",
-  "config.scrcpy.showExtendedStats": "Show extended statistics (FPS, bitrate, frame drops)"
+  "config.scrcpy.showExtendedStats": "Show extended statistics (FPS, bitrate, frame drops)",
+  "No displays found on the device": "No displays found on the device",
+  "Main display": "Main display",
+  "Select a display to mirror": "Select a display to mirror",
+  "Select Display": "Select Display",
+  "Display set to {0}. Reconnecting...": "Display set to {0}. Reconnecting...",
+  "Failed to list displays: {0}": "Failed to list displays: {0}",
+  "Device not connected": "Device not connected",
+  "config.scrcpy.displayId": "Display ID to mirror (0 = main display, 1+ = secondary displays)",
+  "command.selectDisplay": "Select Display to Mirror"
 }

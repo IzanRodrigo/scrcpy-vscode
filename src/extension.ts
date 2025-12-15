@@ -62,6 +62,11 @@ export function activate(context: vscode.ExtensionContext) {
     provider?.listCameras();
   });
 
+  // Register select display command
+  const selectDisplayCommand = vscode.commands.registerCommand('scrcpy.selectDisplay', () => {
+    provider?.selectDisplay();
+  });
+
   // Register tab switching commands (for keyboard shortcuts)
   const tabCommands = [];
   for (let i = 1; i <= 9; i++) {
@@ -81,6 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
     settingsCommand,
     toggleRecordingCommand,
     listCamerasCommand,
+    selectDisplayCommand,
     ...tabCommands
   );
 }

@@ -340,6 +340,13 @@ class DeviceSession {
     }
     return this.connection.getInstalledApps(thirdPartyOnly);
   }
+
+  async listDisplays(): Promise<Array<{ id: number; info: string }>> {
+    if (!this.connection) {
+      throw new Error(vscode.l10n.t('No connection'));
+    }
+    return this.connection.listDisplays();
+  }
 }
 
 /**
@@ -1040,6 +1047,17 @@ export class DeviceManager {
       throw new Error(vscode.l10n.t('No active device'));
     }
     return session.getInstalledApps(thirdPartyOnly);
+  }
+
+  /**
+   * Get list of available displays on active device
+   */
+  async getDisplays(deviceId?: string): Promise<Array<{ id: number; info: string }>> {
+    const session = deviceId ? this.sessions.get(deviceId) : this.getActiveSession();
+    if (!session) {
+      throw new Error(vscode.l10n.t('No active device'));
+    }
+    return session.listDisplays();
   }
 
   /**

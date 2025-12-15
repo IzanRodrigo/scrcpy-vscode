@@ -114,6 +114,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
             'scrcpy.cameraId',
             'scrcpy.cameraSize',
             'scrcpy.cameraFps',
+            'scrcpy.displayId',
           ];
           const needsReconnect = reconnectSettings.some((s) => e.affectsConfiguration(s));
 
@@ -164,6 +165,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       cameraId: config.get<string>('cameraId', ''),
       cameraSize: config.get<string>('cameraSize', ''),
       cameraFps: config.get<number>('cameraFps', 0),
+      displayId: config.get<number>('displayId', 0),
     };
   }
 
@@ -825,6 +827,55 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to list cameras: ${message}`);
+    }
+  }
+
+  /**
+   * Show display picker and select which display to mirror
+   */
+  public async selectDisplay(): Promise<void> {
+    if (!this._deviceManager) {
+      vscode.window.showErrorMessage(vscode.l10n.t('No device connected'));
+      return;
+    }
+
+    try {
+      // Get available displays from the active device
+      const displays = await this._deviceManager.getDisplays();
+
+      if (displays.length === 0) {
+        vscode.window.showInformationMessage(vscode.l10n.t('No displays found on the device'));
+        return;
+      }
+
+      // Show quick pick with display options
+      const items = displays.map((d) => ({
+        label: d.info,
+        description: d.id === 0 ? vscode.l10n.t('Main display') : '',
+        displayId: d.id,
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: vscode.l10n.t('Select a display to mirror'),
+        title: vscode.l10n.t('Select Display'),
+      });
+
+      if (selected) {
+        // Update the displayId setting
+        const config = vscode.workspace.getConfiguration('scrcpy');
+        await config.update('displayId', selected.displayId, vscode.ConfigurationTarget.Global);
+
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('Display set to {0}. Reconnecting...', selected.label)
+        );
+
+        // Reconnect to apply the change
+        await this._disconnect();
+        this._initializeAndConnect();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to list displays: {0}', message));
     }
   }
 
