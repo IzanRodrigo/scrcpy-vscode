@@ -5,6 +5,12 @@ All notable changes to the "Scrcpy for VS Code" extension will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-12-15
+
+### Changed
+
+- Reduced extension package size from 717 KB to 134 KB by improving `.vscodeignore`
+
 ## [0.1.0] - 2025-12-15
 
 ### Added
@@ -58,4 +64,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - English (default)
 - Spanish
 
+[0.1.1]: https://github.com/izantech/scrcpy-vscode/releases/tag/0.1.1
 [0.1.0]: https://github.com/izantech/scrcpy-vscode/releases/tag/0.1.0
