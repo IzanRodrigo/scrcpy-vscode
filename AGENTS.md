@@ -90,10 +90,12 @@ Configure these in repository Settings > Secrets and variables > Actions:
 
 ### Publishing a Release
 
+**Important:** Do NOT manually run `vsce publish` or `ovsx publish`. Publishing is automated via GitHub Actions.
+
 1. Update version in `package.json`
-2. Commit the version bump
-3. Create and push a tag: `git tag v0.1.0 && git push origin v0.1.0`
-4. The workflow automatically builds, verifies, and publishes to both marketplaces
+2. Commit and push the version bump to `main`
+3. Create and push a version tag (without `v` prefix): `git tag 0.1.2 && git push origin 0.1.2`
+4. The workflow automatically builds, verifies, and publishes to both VS Code Marketplace and Open VSX
 
 ## Project Structure
 
