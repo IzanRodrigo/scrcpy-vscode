@@ -396,6 +396,24 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         }
         break;
 
+      case 'expandNotificationPanel':
+        if (this._deviceManager) {
+          this._deviceManager.expandNotificationPanel();
+        }
+        break;
+
+      case 'expandSettingsPanel':
+        if (this._deviceManager) {
+          this._deviceManager.expandSettingsPanel();
+        }
+        break;
+
+      case 'collapsePanels':
+        if (this._deviceManager) {
+          this._deviceManager.collapsePanels();
+        }
+        break;
+
       case 'screenshot':
         await this._takeAndSaveScreenshot();
         break;

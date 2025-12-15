@@ -244,6 +244,22 @@ function initialize() {
   recordingIndicator = document.getElementById('recording-indicator');
   recordingTime = document.getElementById('recording-time');
 
+  // Notification panel button
+  const notificationPanelBtn = document.getElementById('notification-panel-btn');
+  if (notificationPanelBtn) {
+    notificationPanelBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'expandNotificationPanel' });
+    });
+  }
+
+  // Settings panel button
+  const settingsPanelBtn = document.getElementById('settings-panel-btn');
+  if (settingsPanelBtn) {
+    settingsPanelBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'expandSettingsPanel' });
+    });
+  }
+
   // Add keyboard shortcuts for tab switching (Alt+1 to Alt+9)
   document.addEventListener('keydown', (e) => {
     // Alt+1 through Alt+9 (and Alt+0 for 10th tab)

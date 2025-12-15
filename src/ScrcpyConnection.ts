@@ -835,6 +835,63 @@ export class ScrcpyConnection {
   }
 
   /**
+   * Expand notification panel on device
+   */
+  expandNotificationPanel(): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Control message format: type (1) = 1 byte only
+    const msg = Buffer.alloc(1);
+    msg.writeUInt8(ScrcpyProtocol.ControlMessageType.EXPAND_NOTIFICATION_PANEL, 0);
+
+    try {
+      this.controlSocket.write(msg);
+    } catch (error) {
+      console.error('Failed to expand notification panel:', error);
+    }
+  }
+
+  /**
+   * Expand settings panel on device
+   */
+  expandSettingsPanel(): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Control message format: type (1) = 1 byte only
+    const msg = Buffer.alloc(1);
+    msg.writeUInt8(ScrcpyProtocol.ControlMessageType.EXPAND_SETTINGS_PANEL, 0);
+
+    try {
+      this.controlSocket.write(msg);
+    } catch (error) {
+      console.error('Failed to expand settings panel:', error);
+    }
+  }
+
+  /**
+   * Collapse panels on device (notification panel and settings panel)
+   */
+  collapsePanels(): void {
+    if (!this.controlSocket || !this.isConnected) {
+      return;
+    }
+
+    // Control message format: type (1) = 1 byte only
+    const msg = Buffer.alloc(1);
+    msg.writeUInt8(ScrcpyProtocol.ControlMessageType.COLLAPSE_PANELS, 0);
+
+    try {
+      this.controlSocket.write(msg);
+    } catch (error) {
+      console.error('Failed to collapse panels:', error);
+    }
+  }
+
+  /**
    * Send key down event to device
    */
   sendKeyDown(keycode: number): void {

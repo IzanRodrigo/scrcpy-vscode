@@ -285,6 +285,18 @@ class DeviceSession {
     this.connection?.rotateDevice();
   }
 
+  expandNotificationPanel(): void {
+    this.connection?.expandNotificationPanel();
+  }
+
+  expandSettingsPanel(): void {
+    this.connection?.expandSettingsPanel();
+  }
+
+  collapsePanels(): void {
+    this.connection?.collapsePanels();
+  }
+
   async takeScreenshot(): Promise<Buffer> {
     if (!this.connection) {
       throw new Error(vscode.l10n.t('No connection'));
@@ -939,6 +951,27 @@ export class DeviceManager {
    */
   rotateDevice(): void {
     this.getActiveSession()?.rotateDevice();
+  }
+
+  /**
+   * Expand notification panel on active device
+   */
+  expandNotificationPanel(): void {
+    this.getActiveSession()?.expandNotificationPanel();
+  }
+
+  /**
+   * Expand settings panel on active device
+   */
+  expandSettingsPanel(): void {
+    this.getActiveSession()?.expandSettingsPanel();
+  }
+
+  /**
+   * Collapse panels on active device
+   */
+  collapsePanels(): void {
+    this.getActiveSession()?.collapsePanels();
   }
 
   /**
