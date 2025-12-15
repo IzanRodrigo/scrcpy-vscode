@@ -1,4 +1,4 @@
-import { H264Utils, NALUnitType } from './H264Utils';
+import { CodecUtils, VideoCodec } from './CodecUtils';
 
 /**
  * Extended stats returned by VideoRenderer
@@ -10,11 +10,13 @@ export interface ExtendedStats {
 }
 
 /**
- * H.264 video decoder and renderer using WebCodecs API
+ * Video decoder and renderer using WebCodecs API
  *
+ * Supports H.264, H.265 (HEVC), and AV1 codecs.
  * Follows the same approach as scrcpy client:
- * - Config packets (SPS/PPS) are merged with the next keyframe
- * - Data is passed in Annex B format (start code prefixed)
+ * - Config packets (SPS/PPS/VPS) are merged with the next keyframe
+ * - Data is passed in Annex B format (start code prefixed) for H.264/H.265
+ * - AV1 uses OBU format
  */
 export class VideoRenderer {
   private canvas: HTMLCanvasElement;
@@ -39,6 +41,8 @@ export class VideoRenderer {
   private needsKeyframe = true; // After configure(), decoder needs a keyframe first
   private isPaused = false;
   private resizeObserver: ResizeObserver | null = null;
+  private codec: VideoCodec = 'h264'; // Default to H.264
+  private codecDetected = false;
 
   // Extended stats tracking
   private bytesReceived = 0;
@@ -214,15 +218,26 @@ export class VideoRenderer {
     }
 
     if (isConfig) {
-      // Store config packet (SPS/PPS) to prepend to next keyframe
+      // Store config packet (SPS/PPS/VPS) to prepend to next keyframe
       // This matches sc_packet_merger behavior in scrcpy
       // Only store if data is not empty (dimensions-only messages have empty data)
       if (data.length > 0) {
         this.pendingConfig = data;
       }
 
-      // Parse SPS for dimensions (rotation sends new SPS with new dimensions)
-      const dims = H264Utils.parseSPSDimensions(data);
+      // Detect codec from config packet if not already detected
+      if (!this.codecDetected) {
+        const detectedCodec = CodecUtils.detectCodec(data);
+        if (detectedCodec) {
+          this.codec = detectedCodec;
+          this.codecDetected = true;
+          console.log(`Detected video codec: ${this.codec}`);
+        }
+      }
+
+      // Parse config for dimensions (rotation sends new config with new dimensions)
+      // For H.264, we can parse SPS. For H.265/AV1, we rely on the metadata from scrcpy
+      const dims = CodecUtils.parseConfigDimensions(data, this.codec);
       if (dims && (dims.width !== this.width || dims.height !== this.height)) {
         this.configure(dims.width, dims.height);
         this.onDimensionsChanged?.(dims.width, dims.height);
@@ -301,30 +316,16 @@ export class VideoRenderer {
   }
 
   /**
-   * Check if data contains a keyframe (IDR NAL unit)
+   * Check if data contains a keyframe (IDR frame)
+   * Uses codec-specific detection
    */
   private containsKeyFrame(data: Uint8Array): boolean {
-    // Look for IDR NAL unit (type 5) in the data
-    for (let i = 0; i < data.length - 4; i++) {
-      // Find start code
-      if (
-        (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) ||
-        (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1)
-      ) {
-        const offset = data[i + 2] === 1 ? 3 : 4;
-        const nalType = data[i + offset] & 0x1f;
-        if (nalType === NALUnitType.IDR) {
-          // IDR
-          return true;
-        }
-      }
-    }
-    return false;
+    return CodecUtils.containsKeyFrame(data, this.codec);
   }
 
   /**
    * Configure the WebCodecs decoder
-   * Uses Annex B format without description (like FFmpeg)
+   * Uses Annex B format for H.264/H.265, OBU format for AV1
    */
   private configureCodec() {
     if (!this.decoder || !this.pendingConfig) {
@@ -332,12 +333,13 @@ export class VideoRenderer {
     }
 
     try {
-      // Extract profile info from SPS for codec string
-      const spsInfo = H264Utils.extractSPSInfo(this.pendingConfig);
-
-      const codecString = spsInfo
-        ? `avc1.${spsInfo.profile.toString(16).padStart(2, '0')}${spsInfo.constraint.toString(16).padStart(2, '0')}${spsInfo.level.toString(16).padStart(2, '0')}`
-        : 'avc1.42001f'; // Default to baseline profile level 3.1
+      // Generate codec string based on detected codec
+      const codecString = CodecUtils.generateCodecString(
+        this.codec,
+        this.pendingConfig,
+        this.width,
+        this.height
+      );
 
       console.log(`Configuring codec: ${codecString}, ${this.width}x${this.height}`);
 
@@ -381,6 +383,9 @@ export class VideoRenderer {
       console.log(`Codec configured successfully: ${this.codec}`);
     } catch (error) {
       console.error('Failed to configure codec:', error);
+      console.error(
+        'If you see this error with H.265 or AV1, your browser may not support this codec. Try H.264 instead.'
+      );
     }
   }
 

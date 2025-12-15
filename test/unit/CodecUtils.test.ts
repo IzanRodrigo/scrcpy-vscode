@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { H264Utils, NALUnitType } from '../../src/webview/H264Utils';
+import { CodecUtils, CodecUtils, NALUnitType } from '../../src/webview/CodecUtils';
 import { INVALID_DATA } from '../fixtures/h264-samples';
 
-describe('H264Utils', () => {
+describe('CodecUtils', () => {
   describe('NALUnitType enum', () => {
     it('should have correct NAL unit type values', () => {
       expect(NALUnitType.IDR).toBe(5);
@@ -11,19 +11,19 @@ describe('H264Utils', () => {
     });
   });
 
-  describe('parseSPSDimensions', () => {
+  describe('parseH264SPSDimensions', () => {
     it('should return null for empty data', () => {
-      const result = H264Utils.parseSPSDimensions(INVALID_DATA.empty);
+      const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.empty);
       expect(result).toBeNull();
     });
 
     it('should return null for data too short to contain valid NAL', () => {
-      const result = H264Utils.parseSPSDimensions(INVALID_DATA.tooShort);
+      const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.tooShort);
       expect(result).toBeNull();
     });
 
     it('should return null for data without start code', () => {
-      const result = H264Utils.parseSPSDimensions(INVALID_DATA.noStartCode);
+      const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.noStartCode);
       expect(result).toBeNull();
     });
 
@@ -31,7 +31,7 @@ describe('H264Utils', () => {
       // Truncated data may either return null or throw - either behavior is acceptable
       // as long as it doesn't crash the application
       expect(() => {
-        const result = H264Utils.parseSPSDimensions(INVALID_DATA.truncated);
+        const result = CodecUtils.parseH264SPSDimensions(INVALID_DATA.truncated);
         // If it returns, it should be null or a valid dimension object
         expect(
           result === null ||
@@ -43,7 +43,7 @@ describe('H264Utils', () => {
     it('should return null when no SPS NAL unit is found', () => {
       // Only contains PPS (NAL type 8), not SPS (NAL type 7)
       const ppsOnly = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0x80]);
-      const result = H264Utils.parseSPSDimensions(ppsOnly);
+      const result = CodecUtils.parseH264SPSDimensions(ppsOnly);
       expect(result).toBeNull();
     });
 
@@ -53,7 +53,7 @@ describe('H264Utils', () => {
         0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5, 0xc0,
         0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6, 0x58,
       ]);
-      const result = H264Utils.parseSPSDimensions(spsWithShortStartCode);
+      const result = CodecUtils.parseH264SPSDimensions(spsWithShortStartCode);
       // Should at least not return null for valid SPS format
       // Actual dimensions depend on the h264-sps-parser library's parsing
       expect(
@@ -68,7 +68,7 @@ describe('H264Utils', () => {
         0xc0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x60, 0xc6,
         0x58,
       ]);
-      const result = H264Utils.parseSPSDimensions(spsWithLongStartCode);
+      const result = CodecUtils.parseH264SPSDimensions(spsWithLongStartCode);
       // Should at least not return null for valid SPS format
       expect(
         result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
@@ -84,14 +84,14 @@ describe('H264Utils', () => {
     });
   });
 
-  describe('extractSPSInfo', () => {
+  describe('extractH264SPSInfo', () => {
     it('should return null for empty data', () => {
-      const result = H264Utils.extractSPSInfo(INVALID_DATA.empty);
+      const result = CodecUtils.extractH264SPSInfo(INVALID_DATA.empty);
       expect(result).toBeNull();
     });
 
     it('should return null for data without SPS', () => {
-      const result = H264Utils.extractSPSInfo(INVALID_DATA.noStartCode);
+      const result = CodecUtils.extractH264SPSInfo(INVALID_DATA.noStartCode);
       expect(result).toBeNull();
     });
 
@@ -103,7 +103,7 @@ describe('H264Utils', () => {
         0x58,
       ]);
 
-      const result = H264Utils.extractSPSInfo(sps);
+      const result = CodecUtils.extractH264SPSInfo(sps);
 
       // Check that we get back an object with the expected shape
       // Actual values depend on the h264-sps-parser library
@@ -127,7 +127,7 @@ describe('H264Utils', () => {
         0x58,
       ]);
 
-      const result = H264Utils.parseSPSDimensions(mixedData);
+      const result = CodecUtils.parseH264SPSDimensions(mixedData);
       // Should find the SPS even when PPS comes first
       expect(
         result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
@@ -147,7 +147,7 @@ describe('H264Utils', () => {
         0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x3c, 0x80,
       ]);
 
-      const result = H264Utils.parseSPSDimensions(multiNAL);
+      const result = CodecUtils.parseH264SPSDimensions(multiNAL);
       // Should find the SPS in the middle
       expect(
         result === null || (typeof result?.width === 'number' && typeof result?.height === 'number')
@@ -157,20 +157,20 @@ describe('H264Utils', () => {
 
   describe('error handling', () => {
     it('should not throw on invalid data', () => {
-      expect(() => H264Utils.parseSPSDimensions(INVALID_DATA.empty)).not.toThrow();
-      expect(() => H264Utils.parseSPSDimensions(INVALID_DATA.tooShort)).not.toThrow();
-      expect(() => H264Utils.parseSPSDimensions(INVALID_DATA.noStartCode)).not.toThrow();
-      expect(() => H264Utils.parseSPSDimensions(INVALID_DATA.truncated)).not.toThrow();
+      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.empty)).not.toThrow();
+      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.tooShort)).not.toThrow();
+      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.noStartCode)).not.toThrow();
+      expect(() => CodecUtils.parseH264SPSDimensions(INVALID_DATA.truncated)).not.toThrow();
     });
 
-    it('should not throw on extractSPSInfo with invalid data', () => {
-      expect(() => H264Utils.extractSPSInfo(INVALID_DATA.empty)).not.toThrow();
-      expect(() => H264Utils.extractSPSInfo(INVALID_DATA.tooShort)).not.toThrow();
+    it('should not throw on extractH264SPSInfo with invalid data', () => {
+      expect(() => CodecUtils.extractH264SPSInfo(INVALID_DATA.empty)).not.toThrow();
+      expect(() => CodecUtils.extractH264SPSInfo(INVALID_DATA.tooShort)).not.toThrow();
     });
 
     it('should handle buffer with only start codes', () => {
       const onlyStartCodes = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01]);
-      expect(() => H264Utils.parseSPSDimensions(onlyStartCodes)).not.toThrow();
+      expect(() => CodecUtils.parseH264SPSDimensions(onlyStartCodes)).not.toThrow();
     });
   });
 });

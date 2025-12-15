@@ -56,6 +56,22 @@
             ],
             "markdownDescription": "%config.scrcpy.videoSource%"
           },
+          "scrcpy.videoCodec": {
+            "type": "string",
+            "default": "h264",
+            "order": 1,
+            "enum": [
+              "h264",
+              "h265",
+              "av1"
+            ],
+            "enumDescriptions": [
+              "%config.scrcpy.videoCodec.h264%",
+              "%config.scrcpy.videoCodec.h265%",
+              "%config.scrcpy.videoCodec.av1%"
+            ],
+            "markdownDescription": "%config.scrcpy.videoCodec%"
+          },
           "scrcpy.maxSize": {
             "type": "number",
             "default": 1920,

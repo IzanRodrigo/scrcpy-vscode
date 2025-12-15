@@ -7,6 +7,8 @@ export const DEVICE_NAME_LENGTH = 64;
 
 // Video Codec IDs
 export const VIDEO_CODEC_ID_H264 = 0x68323634; // "h264"
+export const VIDEO_CODEC_ID_H265 = 0x68323635; // "h265"
+export const VIDEO_CODEC_ID_AV1 = 0x00617631; // "av1" (little-endian interpretation)
 // Audio Codec IDs
 export const AUDIO_CODEC_ID_OPUS = 0x6f707573; // "opus"
 
@@ -55,6 +57,8 @@ export enum KeyAction {
 export const ScrcpyProtocol = {
   DEVICE_NAME_LENGTH,
   VIDEO_CODEC_ID_H264,
+  VIDEO_CODEC_ID_H265,
+  VIDEO_CODEC_ID_AV1,
   AUDIO_CODEC_ID_OPUS,
   ControlMessageType,
   DeviceMessageType,

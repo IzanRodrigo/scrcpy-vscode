@@ -34,6 +34,7 @@ export interface ScrcpyConfig {
   virtualDisplayWidth: number;
   virtualDisplayHeight: number;
   virtualDisplayDpi: number;
+  videoCodec: 'h264' | 'h265' | 'av1';
   screenOff: boolean;
   stayAwake: boolean;
   maxSize: number;
@@ -278,7 +279,7 @@ export class ScrcpyConnection {
         ? [`audio_source=${this.config.audioSource}`]
         : []),
       'control=true',
-      'video_codec=h264',
+      `video_codec=${this.config.videoCodec}`,
       `video_source=${this.config.videoSource}`,
       `max_size=${this.config.maxSize}`,
       `video_bit_rate=${this.config.bitRate * 1000000}`,
@@ -543,9 +544,15 @@ export class ScrcpyConnection {
         // Check for new codec metadata (sent on rotation/reconfiguration)
         // Codec metadata: codec_id (4) + width (4) + height (4)
         // H.264 codec_id = 0x68323634 ("h264")
+        // H.265 codec_id = 0x68323635 ("h265")
+        // AV1 codec_id = 0x00617631 ("av1")
         if (buffer.length >= 12) {
           const possibleCodecId = buffer.readUInt32BE(0);
-          if (possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H264) {
+          if (
+            possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H264 ||
+            possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265 ||
+            possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_AV1
+          ) {
             const newWidth = buffer.readUInt32BE(4);
             const newHeight = buffer.readUInt32BE(8);
 
