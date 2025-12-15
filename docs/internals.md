@@ -11,12 +11,16 @@ scrcpy-vscode/
 │   ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar integration
 │   ├── DeviceManager.ts      # Multi-device session management
 │   ├── ScrcpyConnection.ts   # ADB/scrcpy server communication
+│   ├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
 │   └── webview/
 │       ├── main.ts           # WebView entry point, tab management
-│       ├── VideoRenderer.ts  # WebCodecs H.264 decoder (with pause/resume)
+│       ├── VideoRenderer.ts  # WebCodecs H.264/H.265/AV1 decoder (with pause/resume)
 │       ├── AudioRenderer.ts  # Opus decoder using opus-decoder WASM library
-│       ├── InputHandler.ts   # Touch/mouse/scroll event handling
-│       └── KeyboardHandler.ts # Keyboard input (text + keycodes)
+│       ├── InputHandler.ts   # Touch/mouse/scroll/gesture event handling
+│       ├── KeyboardHandler.ts # Keyboard input (text + keycodes)
+│       ├── CodecUtils.ts     # Video codec detection and configuration
+│       ├── RecordingManager.ts # Screen recording to WebM/MP4
+│       └── WebviewTemplate.ts # HTML template generation
 ├── dist/                     # Compiled output
 │   ├── extension.js          # Main extension bundle
 │   └── webview/

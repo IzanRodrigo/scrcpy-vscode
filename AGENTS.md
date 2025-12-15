@@ -103,12 +103,16 @@ src/
 ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar view
 ├── DeviceManager.ts      # Multi-device session management
 ├── ScrcpyConnection.ts   # ADB communication, scrcpy protocol
+├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
 └── webview/
     ├── main.ts           # WebView entry, message handling, tab management
-    ├── VideoRenderer.ts  # WebCodecs H.264 decoder (with pause/resume)
+    ├── VideoRenderer.ts  # WebCodecs H.264/H.265/AV1 decoder (with pause/resume)
     ├── AudioRenderer.ts  # WebCodecs Opus decoder (with pause/resume/mute)
-    ├── InputHandler.ts   # Pointer and scroll event handling
-    └── KeyboardHandler.ts # Keyboard input (text injection + keycodes)
+    ├── InputHandler.ts   # Pointer, scroll, and gesture event handling
+    ├── KeyboardHandler.ts # Keyboard input (text injection + keycodes)
+    ├── CodecUtils.ts     # Video codec detection and configuration utilities
+    ├── RecordingManager.ts # Screen recording to WebM/MP4 format
+    └── WebviewTemplate.ts # HTML template generation for webview
 ```
 
 ## Key Files
@@ -161,15 +165,17 @@ src/
   - `pushFiles()`: Uploads files/folders in a single `adb push` command (default destination: `/sdcard/Download/`)
   - Error handling: Reports unexpected disconnects via `onError` callback (shows reconnect UI)
 
-- **VideoRenderer.ts**: H.264 decoding
-  - Uses WebCodecs API in Annex B mode (no description)
+- **VideoRenderer.ts**: Multi-codec video decoding
+  - Uses WebCodecs API in Annex B mode for H.264/H.265, OBU format for AV1
+  - Supports H.264, H.265 (HEVC), and AV1 codecs (configurable via `scrcpy.videoCodec`)
   - Merges config packets with keyframes (like scrcpy client)
-  - Extracts codec string from SPS
+  - Uses `CodecUtils.ts` for codec detection and configuration
   - Parses SPS to detect dimension changes on rotation (notifies extension via `dimensionsChanged` message)
   - `fitToContainer()`: Sizes canvas to fit container while maintaining aspect ratio
   - `configure()`: Skips reconfiguration if dimensions unchanged (preserves canvas content on tab switch)
   - `pause()`: Stops rendering and clears frame queue (for inactive tabs)
   - `resume()`: Resumes rendering
+  - Extended stats: Tracks bitrate, frame drops alongside FPS
 
 - **AudioRenderer.ts**: Opus audio decoding and playback
   - Uses `opus-decoder` WASM library (WebCodecs Opus not supported in VS Code webviews)
@@ -295,11 +301,12 @@ npm run test:ui
 ```
 test/
 ├── unit/
-│   ├── H264Utils.test.ts       # H.264 SPS parsing tests
+│   ├── CodecUtils.test.ts      # Video codec detection and configuration tests
 │   ├── ScrcpyProtocol.test.ts  # Protocol constants tests
 │   └── webview/
-│       ├── InputHandler.test.ts    # Pointer/scroll event tests
-│       └── KeyboardHandler.test.ts # Keyboard input tests
+│       ├── InputHandler.test.ts      # Pointer/scroll event tests
+│       ├── KeyboardHandler.test.ts   # Keyboard input tests
+│       └── RecordingManager.test.ts  # Screen recording tests
 ├── integration/
 │   ├── DeviceManager.test.ts   # Device discovery & WiFi tests
 │   └── ScrcpyConnection.test.ts # Connection & control tests

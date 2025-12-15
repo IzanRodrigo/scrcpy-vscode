@@ -23,32 +23,32 @@ Display and control your Android device screen directly within VS Code, similar 
 
 ### Video & Streaming
 
-- **Camera Mirroring** - Mirror device front/back camera instead of screen display
-- **Screen Recording** - Record device screen to WebM or MP4 format
-- **Virtual Display** - Create a separate virtual display instead of mirroring main screen
-- **Multiple Display Support** - Select which physical display to mirror (for devices with external monitors)
-- **H.265/AV1 Codec** - Support for newer video codecs for better quality/compression
-- **Crop Region** - Mirror only a specific portion of the screen
+- **[Camera Mirroring](docs/feature-camera-mirroring.md)** - Mirror device front/back camera instead of screen display
+- **[Screen Recording](docs/feature-screen-recording.md)** - Record device screen to WebM or MP4 format
+- **[Virtual Display](docs/feature-virtual-display.md)** - Create a separate virtual display instead of mirroring main screen
+- **[Multiple Display Support](docs/feature-multiple-display.md)** - Select which physical display to mirror (for devices with external monitors)
+- **[H.265/AV1 Codec](docs/feature-h265-av1.md)** - Support for newer video codecs for better quality/compression
+- **[Crop Region](docs/feature-crop-region.md)** - Mirror only a specific portion of the screen
 
 ### Input & Control
 
-- **App Launcher** - Launch apps by package name from a searchable list
-- **Quick Panel Access** - Buttons to open notification and settings panels
-- **Gesture Support** - Two-finger pinch-to-zoom on canvas
-- **UHID Keyboard** - Hardware keyboard simulation for better game/app compatibility
-- **Keyboard Shortcuts** - Alt+1 through Alt+9 to switch between device tabs
+- **[App Launcher](docs/feature-app-launcher.md)** - Launch apps by package name from a searchable list
+- **[Quick Panel Access](docs/feature-quick-panel.md)** - Buttons to open notification and settings panels
+- **[Gesture Support](docs/feature-gesture-support.md)** - Two-finger pinch-to-zoom on canvas
+- **[UHID Keyboard](docs/feature-uhid-keyboard.md)** - Hardware keyboard simulation for better game/app compatibility
+- **[Keyboard Shortcuts](docs/feature-keyboard-shortcuts.md)** - Alt+1 through Alt+9 to switch between device tabs
 
 ### Audio
 
-- **Audio Source Selection** - Choose between device output, microphone, or playback capture
-- **Microphone Capture** - Record device microphone audio instead of playback
+- **[Audio Source Selection](docs/feature-audio-source.md)** - Choose between device output, microphone, or playback capture
+- **[Microphone Capture](docs/feature-mic-capture.md)** - Record device microphone audio instead of playback
 
 ### Information & Status
 
-- **Device Info Panel** - Show model, Android version, battery, storage on hover
-- **Enhanced Stats** - Display FPS, bitrate, and frame drop statistics
-- **Connection Status** - Visual indicator of connecting/connected/disconnected state per tab
-- **Screenshot Preview** - Show thumbnail preview after taking screenshot with save/copy options
+- **[Device Info Panel](docs/feature-device-info.md)** - Show model, Android version, battery, storage on hover
+- **[Enhanced Stats](docs/feature-enhanced-stats.md)** - Display FPS, bitrate, and frame drop statistics
+- **[Connection Status](docs/feature-connection-status.md)** - Visual indicator of connecting/connected/disconnected state per tab
+- **[Screenshot Preview](docs/feature-screenshot-preview.md)** - Show thumbnail preview after taking screenshot with save/copy options
 
 ## Prerequisites
 
