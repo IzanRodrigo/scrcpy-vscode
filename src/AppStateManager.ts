@@ -124,8 +124,14 @@ export class AppStateManager {
    * Remove a device
    */
   removeDevice(deviceId: string): void {
+    const device = this.state.devices.get(deviceId);
     const existed = this.state.devices.delete(deviceId);
     if (existed) {
+      // Clear cached device info for the removed device
+      if (device) {
+        this.state.deviceInfo.delete(device.serial);
+      }
+
       // Clear active device if it was the removed one
       if (this.state.activeDeviceId === deviceId) {
         this.state.activeDeviceId = null;
@@ -371,9 +377,14 @@ export class AppStateManager {
    * Clear all devices
    */
   clearAllDevices(): void {
-    if (this.state.devices.size > 0) {
+    const hadDevices = this.state.devices.size > 0;
+    const hadActiveDevice = this.state.activeDeviceId !== null;
+    const hadDeviceInfo = this.state.deviceInfo.size > 0;
+
+    if (hadDevices || hadActiveDevice || hadDeviceInfo) {
       this.state.devices.clear();
       this.state.activeDeviceId = null;
+      this.state.deviceInfo.clear();
       this.notifyListeners();
     }
   }

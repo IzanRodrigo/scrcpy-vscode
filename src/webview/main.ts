@@ -752,25 +752,41 @@ function handleStateSnapshot(state: AppStateSnapshot): void {
 
   // 6. Handle status message
   if (state.statusMessage) {
-    switch (state.statusMessage.type) {
-      case 'loading':
-        showStatus(state.statusMessage.text);
-        break;
-      case 'error':
-        showError(state.statusMessage.text);
-        break;
-      case 'empty':
-        // Show empty state when no devices are connected
-        if (sessions.size === 0) {
-          showEmptyState();
-        }
-        break;
+    const targetDeviceId = state.statusMessage.deviceId || undefined;
+    const hasSessions = sessions.size > 0;
+
+    // Only show per-device status overlays for the active device.
+    // Global status overlays are only shown when there are no sessions (initial load / no devices).
+    const shouldShowOverlay = !hasSessions ? true : targetDeviceId === activeDeviceId;
+
+    if (!shouldShowOverlay) {
+      hideStatus();
+    } else {
+      switch (state.statusMessage.type) {
+        case 'loading':
+          showStatus(state.statusMessage.text);
+          break;
+        case 'error':
+          showError(state.statusMessage.text);
+          break;
+        case 'empty':
+          // Show empty state when no devices are connected
+          if (sessions.size === 0) {
+            showEmptyState();
+          } else {
+            hideStatus();
+          }
+          break;
+      }
     }
   } else if (sessions.size === 0) {
     // No status message and no sessions - show empty state
     if (wasAvailable !== toolsAvailable || sessions.size === 0) {
       showEmptyState();
     }
+  } else {
+    // Sessions exist and no status message - ensure overlay is hidden
+    hideStatus();
   }
 
   // 7. Show tab bar if we have sessions
@@ -1170,6 +1186,7 @@ function removeDeviceSession(deviceId: string) {
   session.tabElement.remove();
 
   sessions.delete(deviceId);
+  deviceInfoCache.delete(session.deviceInfo.serial);
 
   // If was active, clear active state
   if (activeDeviceId === deviceId) {
