@@ -9,7 +9,7 @@ scrcpy-vscode/
 ├── src/
 │   ├── extension.ts          # Extension entry point, provider registration
 │   ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar integration
-│   ├── DeviceManager.ts      # Multi-device session management
+│   ├── DeviceService.ts      # Multi-device session management
 │   ├── ScrcpyConnection.ts   # ADB/scrcpy server communication
 │   ├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
 │   └── webview/

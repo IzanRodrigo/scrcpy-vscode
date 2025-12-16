@@ -43,7 +43,7 @@ declare global {
   }
 }
 
-// Tool status tracking
+// Tool status tracking (derived from state snapshot)
 let toolsAvailable = true;
 let adbMissing = false;
 let scrcpyMissing = false;
@@ -54,16 +54,48 @@ let scrcpyMissing = false;
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
 
 /**
- * Session info from extension
+ * Device state from extension (matches AppStateSnapshot)
  */
-interface SessionInfo {
+interface DeviceState {
   deviceId: string;
-  deviceInfo: {
-    serial: string;
-    name: string;
-  };
-  isActive: boolean;
+  serial: string;
+  name: string;
+  model?: string;
   connectionState: ConnectionState;
+  isActive: boolean;
+  videoDimensions?: {
+    width: number;
+    height: number;
+  };
+  videoCodec?: 'h264' | 'h265' | 'av1';
+}
+
+/**
+ * Status message from extension
+ */
+interface StatusMessage {
+  type: 'loading' | 'error' | 'empty';
+  text: string;
+  deviceId?: string;
+}
+
+/**
+ * Complete state snapshot from extension (single source of truth)
+ */
+interface AppStateSnapshot {
+  devices: DeviceState[];
+  activeDeviceId: string | null;
+  settings: {
+    showStats: boolean;
+    showExtendedStats: boolean;
+    audioEnabled: boolean;
+  };
+  toolStatus: {
+    adbAvailable: boolean;
+    scrcpyAvailable: boolean;
+  };
+  statusMessage?: StatusMessage;
+  deviceInfo: Record<string, DeviceDetailedInfo>;
 }
 
 /**
@@ -644,34 +676,127 @@ function updateAudioState(audioEnabled: boolean): void {
 }
 
 /**
+ * Handle state snapshot from extension (single source of truth)
+ * This replaces individual message handlers like sessionList, settings, toolStatus, connectionStateChanged
+ */
+function handleStateSnapshot(state: AppStateSnapshot): void {
+  // 1. Update tool status
+  const wasAvailable = toolsAvailable;
+  toolsAvailable = state.toolStatus.adbAvailable && state.toolStatus.scrcpyAvailable;
+  adbMissing = !state.toolStatus.adbAvailable;
+  scrcpyMissing = !state.toolStatus.scrcpyAvailable;
+
+  // 2. Update settings
+  if (state.settings.showStats !== showStats) {
+    showStats = state.settings.showStats;
+    sessions.forEach((session) => {
+      session.videoRenderer.setStatsEnabled(showStats);
+    });
+    if (!showStats) {
+      statsElement.classList.add('hidden');
+    }
+  }
+
+  if (state.settings.showExtendedStats !== showExtendedStats) {
+    showExtendedStats = state.settings.showExtendedStats;
+    if (showExtendedStats) {
+      statsElement.classList.add('extended');
+    } else {
+      statsElement.classList.remove('extended');
+    }
+  }
+
+  if (state.settings.audioEnabled !== !isMuted) {
+    updateAudioState(state.settings.audioEnabled);
+  }
+
+  // 3. Update device info cache
+  for (const [serial, info] of Object.entries(state.deviceInfo)) {
+    deviceInfoCache.set(serial, info);
+  }
+
+  // 4. Sync sessions - create/update/remove as needed
+  const stateDeviceIds = new Set(state.devices.map((d) => d.deviceId));
+
+  // Remove sessions that no longer exist
+  for (const [deviceId] of sessions) {
+    if (!stateDeviceIds.has(deviceId)) {
+      removeDeviceSession(deviceId);
+    }
+  }
+
+  // Create or update sessions
+  for (const deviceState of state.devices) {
+    let session = sessions.get(deviceState.deviceId);
+
+    if (!session) {
+      // Create new session UI
+      session = createDeviceSession(deviceState.deviceId, {
+        serial: deviceState.serial,
+        name: deviceState.name,
+      });
+    }
+
+    // Update connection state
+    if (session.connectionState !== deviceState.connectionState) {
+      session.connectionState = deviceState.connectionState;
+      updateTabConnectionState(session.tabElement, deviceState.connectionState);
+    }
+  }
+
+  // 5. Update active device
+  const activeSession = state.devices.find((d) => d.isActive);
+  if (activeSession && activeDeviceId !== activeSession.deviceId) {
+    switchToDevice(activeSession.deviceId);
+  }
+
+  // 6. Handle status message
+  if (state.statusMessage) {
+    switch (state.statusMessage.type) {
+      case 'loading':
+        showStatus(state.statusMessage.text);
+        break;
+      case 'error':
+        showError(state.statusMessage.text);
+        break;
+      case 'empty':
+        // Show empty state when no devices are connected
+        if (sessions.size === 0) {
+          showEmptyState();
+        }
+        break;
+    }
+  } else if (sessions.size === 0) {
+    // No status message and no sessions - show empty state
+    if (wasAvailable !== toolsAvailable || sessions.size === 0) {
+      showEmptyState();
+    }
+  }
+
+  // 7. Show tab bar if we have sessions
+  if (state.devices.length > 0) {
+    tabBar.classList.remove('hidden');
+  }
+}
+
+/**
  * Handle messages from the extension
  */
 function handleMessage(event: MessageEvent) {
   const message = event.data;
 
   switch (message.type) {
+    // New unified state snapshot (single source of truth)
+    case 'stateSnapshot':
+      handleStateSnapshot(message.state);
+      break;
+
     case 'videoFrame':
       handleVideoFrame(message);
       break;
 
     case 'audioFrame':
       handleAudioFrame(message);
-      break;
-
-    case 'status':
-      handleStatus(message);
-      break;
-
-    case 'error':
-      handleError(message);
-      break;
-
-    case 'sessionList':
-      updateSessionList(message.sessions);
-      break;
-
-    case 'settings':
-      handleSettings(message);
       break;
 
     case 'screenshotComplete':
@@ -696,16 +821,8 @@ function handleMessage(event: MessageEvent) {
       }
       break;
 
-    case 'connectionStateChanged':
-      handleConnectionStateChanged(message);
-      break;
-
     case 'screenshotPreview':
       handleScreenshotPreview(message);
-      break;
-
-    case 'toolStatus':
-      handleToolStatus(message);
       break;
   }
 }
@@ -803,33 +920,6 @@ function handleAudioFrame(message: {
 }
 
 /**
- * Handle status message
- */
-function handleStatus(message: { deviceId?: string; message: string }) {
-  showStatus(message.message);
-}
-
-/**
- * Handle error message
- */
-function handleError(message: { deviceId?: string; message: string }) {
-  showError(message.message);
-}
-
-/**
- * Handle connection state change
- */
-function handleConnectionStateChanged(message: { deviceId: string; state: ConnectionState }) {
-  const session = sessions.get(message.deviceId);
-  if (!session) {
-    return;
-  }
-
-  session.connectionState = message.state;
-  updateTabConnectionState(session.tabElement, message.state);
-}
-
-/**
  * Update tab element to show connection state
  */
 function updateTabConnectionState(tabElement: HTMLElement, state: ConnectionState) {
@@ -848,81 +938,6 @@ function updateTabConnectionState(tabElement: HTMLElement, state: ConnectionStat
 
   // Add current state class
   statusElement.classList.add(`tab-status-${state}`);
-}
-
-/**
- * Handle settings update from extension
- */
-function handleSettings(message: {
-  showStats?: boolean;
-  showExtendedStats?: boolean;
-  audioEnabled?: boolean;
-}) {
-  if (message.showStats !== undefined) {
-    showStats = message.showStats;
-    // Update all existing renderers
-    sessions.forEach((session) => {
-      session.videoRenderer.setStatsEnabled(showStats);
-    });
-    // Hide stats element if disabled
-    if (!showStats) {
-      statsElement.classList.add('hidden');
-    }
-  }
-
-  if (message.showExtendedStats !== undefined) {
-    showExtendedStats = message.showExtendedStats;
-    // Update stats display style
-    if (showExtendedStats) {
-      statsElement.classList.add('extended');
-    } else {
-      statsElement.classList.remove('extended');
-    }
-  }
-
-  if (message.audioEnabled !== undefined) {
-    updateAudioState(message.audioEnabled);
-  }
-}
-
-/**
- * Update session list (tabs)
- */
-function updateSessionList(sessionList: SessionInfo[]) {
-  // Create or update tabs for each session
-  for (const sessionInfo of sessionList) {
-    let session = sessions.get(sessionInfo.deviceId);
-
-    if (!session) {
-      // Create new session UI
-      session = createDeviceSession(sessionInfo.deviceId, sessionInfo.deviceInfo);
-    }
-
-    // Update connection state
-    if (session.connectionState !== sessionInfo.connectionState) {
-      session.connectionState = sessionInfo.connectionState;
-      updateTabConnectionState(session.tabElement, sessionInfo.connectionState);
-    }
-  }
-
-  // Remove sessions that no longer exist
-  const currentIds = new Set(sessionList.map((s) => s.deviceId));
-  for (const [deviceId] of sessions) {
-    if (!currentIds.has(deviceId)) {
-      removeDeviceSession(deviceId);
-    }
-  }
-
-  // Switch to the active device (always call to ensure proper state)
-  const activeSession = sessionList.find((s) => s.isActive);
-  if (activeSession) {
-    switchToDevice(activeSession.deviceId);
-  }
-
-  // Show tab bar if we have sessions
-  if (sessionList.length > 0) {
-    tabBar.classList.remove('hidden');
-  }
 }
 
 /**
@@ -1709,21 +1724,6 @@ function dismissScreenshotPreview() {
     screenshotPreviewOverlay.classList.remove('visible');
   }
   currentScreenshotData = null;
-}
-
-/**
- * Handle tool status message to update empty state if needed
- */
-function handleToolStatus(message: { adbAvailable: boolean; scrcpyAvailable: boolean }) {
-  const wasAvailable = toolsAvailable;
-  toolsAvailable = message.adbAvailable && message.scrcpyAvailable;
-  adbMissing = !message.adbAvailable;
-  scrcpyMissing = !message.scrcpyAvailable;
-
-  // Re-render empty state if currently showing and status changed
-  if (wasAvailable !== toolsAvailable && sessions.size === 0) {
-    showEmptyState();
-  }
 }
 
 // Initialize when DOM is ready

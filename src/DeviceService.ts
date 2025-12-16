@@ -1,53 +1,25 @@
+/**
+ * Device Service - manages device connections and operations
+ *
+ * This service handles all device connection logic but delegates state
+ * ownership to AppStateManager. It manages ScrcpyConnection instances
+ * and device monitoring.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI, VideoCodecType } from './ScrcpyConnection';
 import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
+import { AppStateManager } from './AppStateManager';
+import { DeviceInfo, DeviceDetailedInfo, ConnectionState, VideoCodec } from './types/AppState';
+
+// Re-export types for backward compatibility
+export type { DeviceInfo, DeviceDetailedInfo, ConnectionState };
 
 /**
- * Device information
+ * Callback types for video/audio frames (high-frequency, bypass state)
  */
-export interface DeviceInfo {
-  serial: string;
-  name: string;
-  model?: string;
-}
-
-/**
- * Detailed device information from ADB
- */
-export interface DeviceDetailedInfo {
-  serial: string;
-  model: string;
-  manufacturer: string;
-  androidVersion: string;
-  sdkVersion: number;
-  batteryLevel: number;
-  batteryCharging: boolean;
-  storageTotal: number; // bytes
-  storageUsed: number; // bytes
-  screenResolution: string; // e.g., "1080x2400"
-  ipAddress?: string;
-}
-
-/**
- * Connection state for a device
- */
-export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
-
-/**
- * Session information sent to webview
- */
-export interface SessionInfo {
-  deviceId: string;
-  deviceInfo: DeviceInfo;
-  isActive: boolean;
-  connectionState: ConnectionState;
-}
-
-/**
- * Callback types
- */
-type VideoFrameCallback = (
+export type VideoFrameCallback = (
   deviceId: string,
   data: Uint8Array,
   isConfig: boolean,
@@ -57,432 +29,75 @@ type VideoFrameCallback = (
   codec?: VideoCodecType
 ) => void;
 
-type AudioFrameCallback = (deviceId: string, data: Uint8Array, isConfig: boolean) => void;
-
-type StatusCallback = (deviceId: string, status: string) => void;
-type SessionListCallback = (sessions: SessionInfo[]) => void;
-type ErrorCallback = (deviceId: string, message: string) => void;
-type ConnectionStateCallback = (deviceId: string, state: ConnectionState) => void;
+export type AudioFrameCallback = (deviceId: string, data: Uint8Array, isConfig: boolean) => void;
 
 /**
- * Manages a single device session
+ * Callback for status messages
  */
-class DeviceSession {
-  public readonly deviceId: string;
-  public readonly deviceInfo: DeviceInfo;
-  public isActive = false;
-  public isPaused = false;
-  public connectionState: ConnectionState = 'connecting';
+export type StatusCallback = (deviceId: string, status: string) => void;
 
-  private connection: ScrcpyConnection | null = null;
-  private retryCount = 0;
-  private isReconnecting = false;
-  private isDisposed = false;
-  private static readonly RETRY_DELAY_MS = 1500;
+/**
+ * Callback for errors
+ */
+export type ErrorCallback = (deviceId: string, message: string) => void;
 
-  // Codec fallback chain: av1 -> h265 -> h264
-  private static readonly CODEC_FALLBACK: Record<string, 'h264' | 'h265' | 'av1' | null> = {
-    av1: 'h265',
-    h265: 'h264',
-    h264: null, // No fallback for h264
-  };
+/**
+ * Internal session data for a connected device
+ */
+interface DeviceSession {
+  deviceId: string;
+  deviceInfo: DeviceInfo;
+  connection: ScrcpyConnection | null;
+  isPaused: boolean;
+  retryCount: number;
+  isReconnecting: boolean;
+  isDisposed: boolean;
+  effectiveCodec: 'h264' | 'h265' | 'av1';
 
-  // Store last video dimensions and config for replay on resume
-  private lastWidth = 0;
-  private lastHeight = 0;
-  private lastConfigData: Uint8Array | null = null;
-  private lastKeyFrameData: Uint8Array | null = null;
-  private lastCodec: VideoCodecType = 'h264';
-
-  // Track the effective codec being used (may differ from config after fallback)
-  private effectiveCodec: 'h264' | 'h265' | 'av1';
-
-  constructor(
-    deviceInfo: DeviceInfo,
-    private videoFrameCallback: VideoFrameCallback,
-    private audioFrameCallback: AudioFrameCallback,
-    private statusCallback: StatusCallback,
-    private errorCallback: ErrorCallback,
-    private connectionStateCallback: ConnectionStateCallback,
-    private config: ScrcpyConfig,
-    private clipboardAPI?: ClipboardAPI,
-    private onSessionFailed?: (deviceId: string) => void
-  ) {
-    this.deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    this.deviceInfo = deviceInfo;
-    this.effectiveCodec = config.videoCodec;
-  }
-
-  async connect(): Promise<void> {
-    this.connectionState = 'connecting';
-    this.connectionStateCallback(this.deviceId, 'connecting');
-
-    // Try connecting with codec fallback
-    await this.connectWithCodecFallback();
-  }
-
-  /**
-   * Attempt connection with codec fallback on failure
-   * Falls back: av1 -> h265 -> h264
-   */
-  private async connectWithCodecFallback(): Promise<void> {
-    // Create config with effective codec
-    const effectiveConfig: ScrcpyConfig = {
-      ...this.config,
-      videoCodec: this.effectiveCodec,
-    };
-
-    this.connection = new ScrcpyConnection(
-      (data, isConfig, isKeyFrame, width, height, codec) => {
-        // Store dimensions, config data, and codec for replay on resume
-        if (width && height) {
-          this.lastWidth = width;
-          this.lastHeight = height;
-        }
-        if (codec) {
-          this.lastCodec = codec;
-        }
-        if (isConfig && data.length > 0) {
-          this.lastConfigData = data;
-        }
-        if (isKeyFrame && data.length > 0) {
-          this.lastKeyFrameData = data;
-        }
-
-        // Only forward frames if not paused
-        if (!this.isPaused) {
-          this.videoFrameCallback(this.deviceId, data, isConfig, isKeyFrame, width, height, codec);
-        }
-      },
-      (status) => this.statusCallback(this.deviceId, status),
-      effectiveConfig,
-      this.deviceInfo.serial,
-      undefined, // onClipboard callback (handled internally by ScrcpyConnection)
-      this.clipboardAPI,
-      (error) => this.handleDisconnect(error), // onError for unexpected disconnects
-      (data, isConfig) => {
-        // Only forward audio frames if not paused
-        if (!this.isPaused) {
-          this.audioFrameCallback(this.deviceId, data, isConfig);
-        }
-      }
-    );
-
-    try {
-      await this.connection.connect();
-      await this.connection.startScrcpy();
-      // Reset retry count on successful connection
-      this.retryCount = 0;
-      this.connectionState = 'connected';
-      this.connectionStateCallback(this.deviceId, 'connected');
-
-      // Notify if we fell back to a different codec
-      if (this.effectiveCodec !== this.config.videoCodec) {
-        this.statusCallback(
-          this.deviceId,
-          vscode.l10n.t(
-            'Using {0} codec (fallback from {1})',
-            this.effectiveCodec,
-            this.config.videoCodec
-          )
-        );
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-
-      // Check if we can fall back to another codec
-      const fallbackCodec = DeviceSession.CODEC_FALLBACK[this.effectiveCodec];
-      if (fallbackCodec) {
-        this.statusCallback(
-          this.deviceId,
-          vscode.l10n.t(
-            '{0} codec failed, trying {1}...',
-            this.effectiveCodec.toUpperCase(),
-            fallbackCodec.toUpperCase()
-          )
-        );
-        this.effectiveCodec = fallbackCodec;
-
-        // Clean up failed connection
-        if (this.connection) {
-          await this.connection.disconnect();
-          this.connection = null;
-        }
-
-        // Retry with fallback codec
-        await this.connectWithCodecFallback();
-        return;
-      }
-
-      // No more fallbacks available
-      this.connectionState = 'disconnected';
-      this.connectionStateCallback(this.deviceId, 'disconnected');
-      this.errorCallback(this.deviceId, message);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle unexpected disconnect with auto-reconnect
-   */
-  private async handleDisconnect(error: string): Promise<void> {
-    // Don't reconnect if disposed or already reconnecting
-    if (this.isDisposed || this.isReconnecting) {
-      return;
-    }
-
-    const maxRetries = this.config.autoReconnect ? this.config.reconnectRetries : 0;
-
-    // Retry loop
-    while (this.retryCount < maxRetries && !this.isDisposed) {
-      this.isReconnecting = true;
-      this.retryCount++;
-      this.connectionState = 'reconnecting';
-      this.connectionStateCallback(this.deviceId, 'reconnecting');
-
-      this.statusCallback(
-        this.deviceId,
-        vscode.l10n.t('Reconnecting (attempt {0}/{1})...', this.retryCount, maxRetries)
-      );
-
-      // Wait before reconnecting (gives ADB time to recover)
-      await new Promise((resolve) => setTimeout(resolve, DeviceSession.RETRY_DELAY_MS));
-
-      // Check if disposed during wait
-      if (this.isDisposed) {
-        this.isReconnecting = false;
-        return;
-      }
-
-      try {
-        // Cleanup old connection
-        if (this.connection) {
-          await this.connection.disconnect();
-          this.connection = null;
-        }
-
-        // Try to reconnect
-        await this.connect();
-        this.isReconnecting = false;
-        return; // Success! Exit the retry loop
-      } catch {
-        // Retry failed, continue to next attempt
-        this.isReconnecting = false;
-      }
-    }
-
-    // All retries exhausted (or auto-reconnect disabled), show error
-    this.connectionState = 'disconnected';
-    this.connectionStateCallback(this.deviceId, 'disconnected');
-    this.errorCallback(this.deviceId, error);
-    // Notify that session has failed so it can be removed
-    if (this.onSessionFailed) {
-      this.onSessionFailed(this.deviceId);
-    }
-  }
-
-  pause(): void {
-    this.isPaused = true;
-  }
-
-  resume(): void {
-    this.isPaused = false;
-
-    // Send config with dimensions so the webview knows this device is active
-    // The canvas retains its last rendered frame, and fresh frames from server
-    // will update it (delta frames are discarded until next keyframe)
-    if (this.lastWidth && this.lastHeight) {
-      // First re-send config/dimensions with codec
-      if (this.lastConfigData) {
-        this.videoFrameCallback(
-          this.deviceId,
-          this.lastConfigData,
-          true,
-          false,
-          this.lastWidth,
-          this.lastHeight,
-          this.lastCodec
-        );
-      } else {
-        // Just dimensions with codec
-        this.videoFrameCallback(
-          this.deviceId,
-          new Uint8Array(0),
-          true,
-          false,
-          this.lastWidth,
-          this.lastHeight,
-          this.lastCodec
-        );
-      }
-
-      // Then re-send last keyframe to ensure immediate display
-      if (this.lastKeyFrameData) {
-        this.videoFrameCallback(
-          this.deviceId,
-          this.lastKeyFrameData,
-          false,
-          true,
-          undefined,
-          undefined,
-          this.lastCodec
-        );
-      }
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    this.isDisposed = true; // Prevent auto-reconnect attempts
-    if (this.connection) {
-      await this.connection.disconnect();
-      this.connection = null;
-    }
-  }
-
-  sendTouch(
-    x: number,
-    y: number,
-    action: 'down' | 'move' | 'up',
-    screenWidth: number,
-    screenHeight: number
-  ): void {
-    this.connection?.sendTouch(x, y, action, screenWidth, screenHeight);
-  }
-
-  sendMultiTouch(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    action: 'down' | 'move' | 'up',
-    screenWidth: number,
-    screenHeight: number
-  ): void {
-    this.connection?.sendMultiTouch(x1, y1, x2, y2, action, screenWidth, screenHeight);
-  }
-
-  sendKeyDown(keycode: number): void {
-    this.connection?.sendKeyDown(keycode);
-  }
-
-  sendKeyUp(keycode: number): void {
-    this.connection?.sendKeyUp(keycode);
-  }
-
-  sendText(text: string): void {
-    this.connection?.sendText(text);
-  }
-
-  sendKeyWithMeta(keycode: number, action: 'down' | 'up', metastate: number): void {
-    this.connection?.sendKeyWithMeta(keycode, action, metastate);
-  }
-
-  sendScroll(x: number, y: number, deltaX: number, deltaY: number): void {
-    this.connection?.sendScroll(x, y, deltaX, deltaY);
-  }
-
-  updateDimensions(width: number, height: number): void {
-    this.connection?.updateDimensions(width, height);
-  }
-
-  async pasteFromHost(): Promise<void> {
-    await this.connection?.pasteFromHost();
-  }
-
-  async copyToHost(): Promise<void> {
-    await this.connection?.copyToHost();
-  }
-
-  rotateDevice(): void {
-    this.connection?.rotateDevice();
-  }
-
-  expandNotificationPanel(): void {
-    this.connection?.expandNotificationPanel();
-  }
-
-  expandSettingsPanel(): void {
-    this.connection?.expandSettingsPanel();
-  }
-
-  collapsePanels(): void {
-    this.connection?.collapsePanels();
-  }
-
-  async takeScreenshot(): Promise<Buffer> {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    return this.connection.takeScreenshot();
-  }
-
-  async listCameras(): Promise<string> {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    return this.connection.listCameras();
-  }
-
-  async installApk(filePath: string): Promise<void> {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    await this.connection.installApk(filePath);
-  }
-
-  async pushFiles(filePaths: string[], destPath?: string): Promise<void> {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    await this.connection.pushFiles(filePaths, destPath);
-  }
-
-  startApp(packageName: string): void {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    this.connection.startApp(packageName);
-  }
-
-  async getInstalledApps(
-    thirdPartyOnly: boolean = false
-  ): Promise<Array<{ packageName: string; label: string }>> {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    return this.connection.getInstalledApps(thirdPartyOnly);
-  }
-
-  async listDisplays(): Promise<Array<{ id: number; info: string }>> {
-    if (!this.connection) {
-      throw new Error(vscode.l10n.t('No connection'));
-    }
-    return this.connection.listDisplays();
-  }
+  // Replay state for tab switching
+  lastWidth: number;
+  lastHeight: number;
+  lastConfigData: Uint8Array | null;
+  lastKeyFrameData: Uint8Array | null;
+  lastCodec: VideoCodecType;
 }
 
+// Codec fallback chain: av1 -> h265 -> h264
+const CODEC_FALLBACK: Record<string, 'h264' | 'h265' | 'av1' | null> = {
+  av1: 'h265',
+  h265: 'h264',
+  h264: null, // No fallback for h264
+};
+
+const RETRY_DELAY_MS = 1500;
+const INFO_CACHE_TTL = 30000; // 30 seconds
+
 /**
- * Manages multiple device sessions
+ * Service for managing device connections
+ *
+ * Delegates state ownership to AppStateManager but manages connections,
+ * device monitoring, and operations.
  */
-export class DeviceManager {
+export class DeviceService {
+  // Internal session data (connections, replay state)
   private sessions = new Map<string, DeviceSession>();
-  private activeDeviceId: string | null = null;
+
+  // Device monitoring
   private trackDevicesProcess: ChildProcess | null = null;
   private trackDevicesRestartTimeout: NodeJS.Timeout | null = null;
   private knownDeviceSerials = new Set<string>();
-  private isMonitoring = false;
   private deviceListUpdateChain: Promise<void> = Promise.resolve();
+
+  // Device info caching
   private deviceInfoCache = new Map<string, { info: DeviceDetailedInfo; timestamp: number }>();
   private deviceInfoRefreshInterval: NodeJS.Timeout | null = null;
-  private static readonly INFO_CACHE_TTL = 30000; // 30 seconds
 
   constructor(
+    private appState: AppStateManager,
     private videoFrameCallback: VideoFrameCallback,
     private audioFrameCallback: AudioFrameCallback,
     private statusCallback: StatusCallback,
-    private sessionListCallback: SessionListCallback,
     private errorCallback: ErrorCallback,
-    private connectionStateCallback: ConnectionStateCallback,
     private config: ScrcpyConfig,
     private clipboardAPI?: ClipboardAPI
   ) {}
@@ -627,7 +242,7 @@ export class DeviceManager {
         }
       }
 
-      return {
+      const info: DeviceDetailedInfo = {
         serial,
         model,
         manufacturer,
@@ -640,9 +255,14 @@ export class DeviceManager {
         screenResolution,
         ipAddress,
       };
-    } catch (error) {
+
+      // Update AppState with device info
+      this.appState.setDeviceInfo(serial, info);
+
+      return info;
+    } catch {
       // Return partial info if commands fail
-      return {
+      const info: DeviceDetailedInfo = {
         serial,
         model: 'Unknown',
         manufacturer: 'Unknown',
@@ -655,6 +275,7 @@ export class DeviceManager {
         screenResolution: 'Unknown',
         ipAddress: undefined,
       };
+      return info;
     }
   }
 
@@ -692,7 +313,7 @@ export class DeviceManager {
     const now = Date.now();
     const cached = this.deviceInfoCache.get(serial);
 
-    if (!forceRefresh && cached && now - cached.timestamp < DeviceManager.INFO_CACHE_TTL) {
+    if (!forceRefresh && cached && now - cached.timestamp < INFO_CACHE_TTL) {
       return cached.info;
     }
 
@@ -715,11 +336,11 @@ export class DeviceManager {
       for (const session of this.sessions.values()) {
         try {
           await this.getCachedDeviceInfo(session.deviceInfo.serial, true);
-        } catch (error) {
+        } catch {
           // Ignore errors during refresh
         }
       }
-    }, DeviceManager.INFO_CACHE_TTL);
+    }, INFO_CACHE_TTL);
   }
 
   /**
@@ -734,12 +355,9 @@ export class DeviceManager {
 
   /**
    * Pair with a device over WiFi using Android 11+ Wireless Debugging
-   * @param address The pairing address (IP:port) from "Pair device with pairing code"
-   * @param pairingCode The 6-digit pairing code
    */
   async pairWifi(address: string, pairingCode: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Use spawn to handle the interactive pairing process
       const adb = spawn(this.getAdbCommand(), ['pair', address]);
 
       let stdout = '';
@@ -750,7 +368,6 @@ export class DeviceManager {
         const output = data.toString();
         stdout += output;
 
-        // When ADB prompts for the pairing code, send it
         if (!pairingCodeSent && output.toLowerCase().includes('enter pairing code')) {
           adb.stdin.write(pairingCode + '\n');
           pairingCodeSent = true;
@@ -772,7 +389,6 @@ export class DeviceManager {
         } else if (output.includes('failed') || output.includes('error') || code !== 0) {
           reject(new Error(stderr || stdout || 'Pairing failed'));
         } else {
-          // Assume success if no explicit failure
           resolve();
         }
       });
@@ -781,7 +397,6 @@ export class DeviceManager {
         reject(error);
       });
 
-      // Timeout after 30 seconds
       setTimeout(() => {
         adb.kill();
         reject(new Error('Pairing timed out'));
@@ -791,9 +406,6 @@ export class DeviceManager {
 
   /**
    * Connect to a device over WiFi using ADB
-   * @param ipAddress The IP address of the device
-   * @param port The port (default 5555)
-   * @returns The device info if connection was successful
    */
   async connectWifi(ipAddress: string, port: number = 5555): Promise<DeviceInfo> {
     const address = `${ipAddress}:${port}`;
@@ -806,11 +418,8 @@ export class DeviceManager {
           return;
         }
 
-        // Check if connection was successful
-        // Output is typically "connected to ip:port" or "already connected to ip:port"
         const output = stdout.toLowerCase();
         if (output.includes('connected to') || output.includes('already connected')) {
-          // Get device model name
           try {
             const modelOutput = execFileSync(
               adbCmd,
@@ -827,7 +436,6 @@ export class DeviceManager {
               model: modelOutput || undefined,
             });
           } catch {
-            // If we can't get the model, just use the address
             resolve({
               serial: address,
               name: address,
@@ -839,7 +447,6 @@ export class DeviceManager {
           output.includes('unable') ||
           output.includes('cannot')
         ) {
-          // Provide helpful error message for common failure cases
           let errorMsg = stdout.trim();
           if (output.includes('connection refused') || output.includes('failed to connect')) {
             errorMsg +=
@@ -850,7 +457,6 @@ export class DeviceManager {
           }
           reject(new Error(errorMsg));
         } else {
-          // Unknown response, try to connect anyway
           resolve({
             serial: address,
             name: address,
@@ -863,7 +469,6 @@ export class DeviceManager {
 
   /**
    * Disconnect a WiFi device from ADB
-   * @param address The IP:port address of the device
    */
   async disconnectWifi(address: string): Promise<void> {
     const adbCmd = this.getAdbCommand();
@@ -887,54 +492,242 @@ export class DeviceManager {
       throw new Error(vscode.l10n.t('Device already connected'));
     }
 
-    const session = new DeviceSession(
-      deviceInfo,
-      this.videoFrameCallback,
-      this.audioFrameCallback,
-      this.statusCallback,
-      this.errorCallback,
-      this.connectionStateCallback,
-      this.config,
-      this.clipboardAPI,
-      (deviceId) => this.handleSessionFailed(deviceId)
-    );
+    const deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    this.sessions.set(session.deviceId, session);
+    // Create internal session
+    const session: DeviceSession = {
+      deviceId,
+      deviceInfo,
+      connection: null,
+      isPaused: false,
+      retryCount: 0,
+      isReconnecting: false,
+      isDisposed: false,
+      effectiveCodec: this.config.videoCodec,
+      lastWidth: 0,
+      lastHeight: 0,
+      lastConfigData: null,
+      lastKeyFrameData: null,
+      lastCodec: 'h264',
+    };
+
+    this.sessions.set(deviceId, session);
 
     // Pause the currently active session (if any)
-    if (this.activeDeviceId) {
-      const oldSession = this.sessions.get(this.activeDeviceId);
+    const currentActiveId = this.appState.getActiveDeviceId();
+    if (currentActiveId) {
+      const oldSession = this.sessions.get(currentActiveId);
       if (oldSession) {
-        oldSession.isActive = false;
-        oldSession.pause();
+        oldSession.isPaused = true;
       }
     }
 
-    // Make the new device active
-    this.activeDeviceId = session.deviceId;
-    session.isActive = true;
+    // Add device to AppState
+    this.appState.addDevice({
+      deviceId,
+      serial: deviceInfo.serial,
+      name: deviceInfo.name,
+      model: deviceInfo.model,
+      connectionState: 'connecting',
+      isActive: true,
+    });
 
-    this.notifySessionListChanged();
+    // Set as active device
+    this.appState.setActiveDevice(deviceId);
 
     try {
-      await session.connect();
+      await this.connectSession(session);
     } catch {
       // Error already reported via callback
       // Remove failed session
-      this.sessions.delete(session.deviceId);
-      if (this.activeDeviceId === session.deviceId) {
-        this.activeDeviceId = null;
-        // Switch to first available session
-        const firstSession = this.sessions.values().next().value as DeviceSession | undefined;
-        if (firstSession) {
-          this.switchToDevice(firstSession.deviceId);
-        }
+      this.sessions.delete(deviceId);
+      this.appState.removeDevice(deviceId);
+
+      // Switch to first available session
+      const deviceIds = this.appState.getDeviceIds();
+      if (deviceIds.length > 0) {
+        this.switchToDevice(deviceIds[0]);
       }
-      this.notifySessionListChanged();
       throw new Error(vscode.l10n.t('Failed to connect'));
     }
 
-    return session.deviceId;
+    return deviceId;
+  }
+
+  /**
+   * Connect a session with codec fallback
+   */
+  private async connectSession(session: DeviceSession): Promise<void> {
+    // Update state to connecting
+    this.appState.updateDeviceConnectionState(session.deviceId, 'connecting');
+
+    await this.connectWithCodecFallback(session);
+  }
+
+  /**
+   * Attempt connection with codec fallback on failure
+   */
+  private async connectWithCodecFallback(session: DeviceSession): Promise<void> {
+    const effectiveConfig: ScrcpyConfig = {
+      ...this.config,
+      videoCodec: session.effectiveCodec,
+    };
+
+    session.connection = new ScrcpyConnection(
+      (data, isConfig, isKeyFrame, width, height, codec) => {
+        // Store dimensions, config data, and codec for replay on resume
+        if (width && height) {
+          session.lastWidth = width;
+          session.lastHeight = height;
+          // Update AppState with dimensions
+          this.appState.updateDeviceVideoDimensions(
+            session.deviceId,
+            width,
+            height,
+            codec as VideoCodec | undefined
+          );
+        }
+        if (codec) {
+          session.lastCodec = codec;
+        }
+        if (isConfig && data.length > 0) {
+          session.lastConfigData = data;
+        }
+        if (isKeyFrame && data.length > 0) {
+          session.lastKeyFrameData = data;
+        }
+
+        // Only forward frames if not paused
+        if (!session.isPaused) {
+          this.videoFrameCallback(
+            session.deviceId,
+            data,
+            isConfig,
+            isKeyFrame,
+            width,
+            height,
+            codec
+          );
+        }
+      },
+      (status) => this.statusCallback(session.deviceId, status),
+      effectiveConfig,
+      session.deviceInfo.serial,
+      undefined,
+      this.clipboardAPI,
+      (error) => this.handleDisconnect(session, error),
+      (data, isConfig) => {
+        if (!session.isPaused) {
+          this.audioFrameCallback(session.deviceId, data, isConfig);
+        }
+      }
+    );
+
+    try {
+      await session.connection.connect();
+      await session.connection.startScrcpy();
+      // Reset retry count on successful connection
+      session.retryCount = 0;
+
+      // Update state to connected
+      this.appState.updateDeviceConnectionState(session.deviceId, 'connected');
+
+      // Notify if we fell back to a different codec
+      if (session.effectiveCodec !== this.config.videoCodec) {
+        this.statusCallback(
+          session.deviceId,
+          vscode.l10n.t(
+            'Using {0} codec (fallback from {1})',
+            session.effectiveCodec,
+            this.config.videoCodec
+          )
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      // Check if we can fall back to another codec
+      const fallbackCodec = CODEC_FALLBACK[session.effectiveCodec];
+      if (fallbackCodec) {
+        this.statusCallback(
+          session.deviceId,
+          vscode.l10n.t(
+            '{0} codec failed, trying {1}...',
+            session.effectiveCodec.toUpperCase(),
+            fallbackCodec.toUpperCase()
+          )
+        );
+        session.effectiveCodec = fallbackCodec;
+
+        // Clean up failed connection
+        if (session.connection) {
+          await session.connection.disconnect();
+          session.connection = null;
+        }
+
+        // Retry with fallback codec
+        await this.connectWithCodecFallback(session);
+        return;
+      }
+
+      // No more fallbacks available
+      this.appState.updateDeviceConnectionState(session.deviceId, 'disconnected');
+      this.errorCallback(session.deviceId, message);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle unexpected disconnect with auto-reconnect
+   */
+  private async handleDisconnect(session: DeviceSession, error: string): Promise<void> {
+    // Don't reconnect if disposed or already reconnecting
+    if (session.isDisposed || session.isReconnecting) {
+      return;
+    }
+
+    const maxRetries = this.config.autoReconnect ? this.config.reconnectRetries : 0;
+
+    // Retry loop
+    while (session.retryCount < maxRetries && !session.isDisposed) {
+      session.isReconnecting = true;
+      session.retryCount++;
+
+      this.appState.updateDeviceConnectionState(session.deviceId, 'reconnecting');
+
+      this.statusCallback(
+        session.deviceId,
+        vscode.l10n.t('Reconnecting (attempt {0}/{1})...', session.retryCount, maxRetries)
+      );
+
+      // Wait before reconnecting
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+
+      if (session.isDisposed) {
+        session.isReconnecting = false;
+        return;
+      }
+
+      try {
+        // Cleanup old connection
+        if (session.connection) {
+          await session.connection.disconnect();
+          session.connection = null;
+        }
+
+        // Try to reconnect
+        await this.connectSession(session);
+        session.isReconnecting = false;
+        return; // Success!
+      } catch {
+        session.isReconnecting = false;
+      }
+    }
+
+    // All retries exhausted
+    this.appState.updateDeviceConnectionState(session.deviceId, 'disconnected');
+    this.errorCallback(session.deviceId, error);
+    this.handleSessionFailed(session.deviceId);
   }
 
   /**
@@ -946,21 +739,66 @@ export class DeviceManager {
       return;
     }
 
+    const currentActiveId = this.appState.getActiveDeviceId();
+
     // Pause old active session
-    if (this.activeDeviceId && this.activeDeviceId !== deviceId) {
-      const oldSession = this.sessions.get(this.activeDeviceId);
+    if (currentActiveId && currentActiveId !== deviceId) {
+      const oldSession = this.sessions.get(currentActiveId);
       if (oldSession) {
-        oldSession.isActive = false;
-        oldSession.pause();
+        oldSession.isPaused = true;
       }
     }
 
     // Activate new session
-    this.activeDeviceId = deviceId;
-    newSession.isActive = true;
-    newSession.resume();
+    newSession.isPaused = false;
+    this.appState.setActiveDevice(deviceId);
 
-    this.notifySessionListChanged();
+    // Resume - send cached frames
+    this.resumeSession(newSession);
+  }
+
+  /**
+   * Resume a session by sending cached config and keyframe
+   */
+  private resumeSession(session: DeviceSession): void {
+    if (session.lastWidth && session.lastHeight) {
+      // First re-send config/dimensions with codec
+      if (session.lastConfigData) {
+        this.videoFrameCallback(
+          session.deviceId,
+          session.lastConfigData,
+          true,
+          false,
+          session.lastWidth,
+          session.lastHeight,
+          session.lastCodec
+        );
+      } else {
+        // Just dimensions with codec
+        this.videoFrameCallback(
+          session.deviceId,
+          new Uint8Array(0),
+          true,
+          false,
+          session.lastWidth,
+          session.lastHeight,
+          session.lastCodec
+        );
+      }
+
+      // Then re-send last keyframe
+      if (session.lastKeyFrameData) {
+        this.videoFrameCallback(
+          session.deviceId,
+          session.lastKeyFrameData,
+          false,
+          true,
+          undefined,
+          undefined,
+          session.lastCodec
+        );
+      }
+    }
   }
 
   /**
@@ -976,33 +814,21 @@ export class DeviceManager {
     const deviceSerial = session.deviceInfo.serial;
     this.knownDeviceSerials.add(deviceSerial);
 
-    await session.disconnect();
+    session.isDisposed = true;
+    if (session.connection) {
+      await session.connection.disconnect();
+      session.connection = null;
+    }
     this.sessions.delete(deviceId);
 
+    // Remove from AppState
+    this.appState.removeDevice(deviceId);
+
     // If removed active device, switch to first available
-    if (this.activeDeviceId === deviceId) {
-      this.activeDeviceId = null;
-      const firstSession = this.sessions.values().next().value as DeviceSession | undefined;
-      if (firstSession) {
-        this.switchToDevice(firstSession.deviceId);
-      }
+    const deviceIds = this.appState.getDeviceIds();
+    if (deviceIds.length > 0 && this.appState.getActiveDeviceId() === null) {
+      this.switchToDevice(deviceIds[0]);
     }
-
-    this.notifySessionListChanged();
-  }
-
-  /**
-   * Get active session
-   */
-  getActiveSession(): DeviceSession | null {
-    return this.activeDeviceId ? (this.sessions.get(this.activeDeviceId) ?? null) : null;
-  }
-
-  /**
-   * Get all sessions
-   */
-  getAllSessions(): DeviceSession[] {
-    return Array.from(this.sessions.values());
   }
 
   /**
@@ -1018,8 +844,22 @@ export class DeviceManager {
   }
 
   /**
-   * Send touch to active device
+   * Get session by device ID
    */
+  private getSession(deviceId: string): DeviceSession | undefined {
+    return this.sessions.get(deviceId);
+  }
+
+  /**
+   * Get active session
+   */
+  private getActiveSession(): DeviceSession | undefined {
+    const activeId = this.appState.getActiveDeviceId();
+    return activeId ? this.sessions.get(activeId) : undefined;
+  }
+
+  // ==================== Device Control Methods ====================
+
   sendTouch(
     x: number,
     y: number,
@@ -1027,12 +867,9 @@ export class DeviceManager {
     screenWidth: number,
     screenHeight: number
   ): void {
-    this.getActiveSession()?.sendTouch(x, y, action, screenWidth, screenHeight);
+    this.getActiveSession()?.connection?.sendTouch(x, y, action, screenWidth, screenHeight);
   }
 
-  /**
-   * Send multi-touch (pinch gesture) to active device
-   */
   sendMultiTouch(
     x1: number,
     y1: number,
@@ -1042,183 +879,144 @@ export class DeviceManager {
     screenWidth: number,
     screenHeight: number
   ): void {
-    this.getActiveSession()?.sendMultiTouch(x1, y1, x2, y2, action, screenWidth, screenHeight);
+    this.getActiveSession()?.connection?.sendMultiTouch(
+      x1,
+      y1,
+      x2,
+      y2,
+      action,
+      screenWidth,
+      screenHeight
+    );
   }
 
-  /**
-   * Send key down to active device
-   */
   sendKeyDown(keycode: number): void {
-    this.getActiveSession()?.sendKeyDown(keycode);
+    this.getActiveSession()?.connection?.sendKeyDown(keycode);
   }
 
-  /**
-   * Send key up to active device
-   */
   sendKeyUp(keycode: number): void {
-    this.getActiveSession()?.sendKeyUp(keycode);
+    this.getActiveSession()?.connection?.sendKeyUp(keycode);
   }
 
-  /**
-   * Send text to active device
-   */
   sendText(text: string): void {
-    this.getActiveSession()?.sendText(text);
+    this.getActiveSession()?.connection?.sendText(text);
   }
 
-  /**
-   * Send key with metastate to active device (for keyboard input with modifiers)
-   */
   sendKeyWithMeta(keycode: number, action: 'down' | 'up', metastate: number): void {
-    this.getActiveSession()?.sendKeyWithMeta(keycode, action, metastate);
+    this.getActiveSession()?.connection?.sendKeyWithMeta(keycode, action, metastate);
   }
 
-  /**
-   * Send scroll event to active device
-   */
   sendScroll(x: number, y: number, deltaX: number, deltaY: number): void {
-    this.getActiveSession()?.sendScroll(x, y, deltaX, deltaY);
+    this.getActiveSession()?.connection?.sendScroll(x, y, deltaX, deltaY);
   }
 
-  /**
-   * Update dimensions for a specific device (called when webview detects rotation)
-   */
   updateDimensions(deviceId: string, width: number, height: number): void {
     const session = this.sessions.get(deviceId);
-    session?.updateDimensions(width, height);
+    session?.connection?.updateDimensions(width, height);
   }
 
-  /**
-   * Paste from host clipboard to active device
-   */
   async pasteFromHost(): Promise<void> {
-    await this.getActiveSession()?.pasteFromHost();
+    await this.getActiveSession()?.connection?.pasteFromHost();
   }
 
-  /**
-   * Copy from active device to host clipboard
-   */
   async copyToHost(): Promise<void> {
-    await this.getActiveSession()?.copyToHost();
+    await this.getActiveSession()?.connection?.copyToHost();
   }
 
-  /**
-   * Rotate active device screen counter-clockwise
-   */
   rotateDevice(): void {
-    this.getActiveSession()?.rotateDevice();
+    this.getActiveSession()?.connection?.rotateDevice();
   }
 
-  /**
-   * Expand notification panel on active device
-   */
   expandNotificationPanel(): void {
-    this.getActiveSession()?.expandNotificationPanel();
+    this.getActiveSession()?.connection?.expandNotificationPanel();
   }
 
-  /**
-   * Expand settings panel on active device
-   */
   expandSettingsPanel(): void {
-    this.getActiveSession()?.expandSettingsPanel();
+    this.getActiveSession()?.connection?.expandSettingsPanel();
   }
 
-  /**
-   * Collapse panels on active device
-   */
   collapsePanels(): void {
-    this.getActiveSession()?.collapsePanels();
+    this.getActiveSession()?.connection?.collapsePanels();
   }
 
-  /**
-   * Take screenshot from active device (original resolution, lossless PNG)
-   */
   async takeScreenshot(): Promise<Buffer> {
     const session = this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    return session.takeScreenshot();
+    return session.connection.takeScreenshot();
   }
 
-  /**
-   * List available cameras on active device
-   */
   async listCameras(): Promise<string> {
     const session = this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    return session.listCameras();
+    return session.connection.listCameras();
   }
 
-  /**
-   * Install APK on active device
-   */
   async installApk(filePath: string): Promise<void> {
     const session = this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    await session.installApk(filePath);
+    await session.connection.installApk(filePath);
   }
 
-  /**
-   * Push files/folders to active device in a single adb push command
-   */
   async pushFiles(filePaths: string[], destPath?: string): Promise<void> {
     const session = this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    await session.pushFiles(filePaths, destPath);
+    await session.connection.pushFiles(filePaths, destPath);
   }
 
-  /**
-   * Launch app on active device by package name
-   */
   launchApp(packageName: string): void {
     const session = this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    session.startApp(packageName);
+    session.connection.startApp(packageName);
   }
 
-  /**
-   * Get list of installed apps from active device
-   */
   async getInstalledApps(
     thirdPartyOnly: boolean = false
   ): Promise<Array<{ packageName: string; label: string }>> {
     const session = this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    return session.getInstalledApps(thirdPartyOnly);
+    return session.connection.getInstalledApps(thirdPartyOnly);
   }
 
-  /**
-   * Get list of available displays on active device
-   */
   async getDisplays(deviceId?: string): Promise<Array<{ id: number; info: string }>> {
     const session = deviceId ? this.sessions.get(deviceId) : this.getActiveSession();
-    if (!session) {
+    if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    return session.listDisplays();
+    return session.connection.listDisplays();
   }
+
+  // ==================== Session Management ====================
 
   /**
    * Disconnect all sessions
    */
   async disconnectAll(): Promise<void> {
-    await Promise.all(Array.from(this.sessions.values()).map((s) => s.disconnect()));
+    await Promise.all(
+      Array.from(this.sessions.values()).map(async (s) => {
+        s.isDisposed = true;
+        if (s.connection) {
+          await s.connection.disconnect();
+        }
+      })
+    );
     this.sessions.clear();
-    this.activeDeviceId = null;
     this.deviceInfoCache.clear();
     this.stopDeviceInfoRefresh();
-    this.notifySessionListChanged();
+
+    // Clear all devices from AppState
+    this.appState.clearAllDevices();
   }
 
   /**
@@ -1230,7 +1028,6 @@ export class DeviceManager {
 
   /**
    * Handle session failure (all reconnect attempts exhausted)
-   * Removes the session to allow auto-connect to work for the same device
    */
   private handleSessionFailed(deviceId: string): void {
     const session = this.sessions.get(deviceId);
@@ -1242,32 +1039,28 @@ export class DeviceManager {
 
     // Remove the failed session
     this.sessions.delete(deviceId);
+    this.appState.removeDevice(deviceId);
 
     // Remove from known devices so auto-connect can pick it up again
     this.knownDeviceSerials.delete(deviceSerial);
 
-    // If this was the active device, clear active state
-    if (this.activeDeviceId === deviceId) {
-      this.activeDeviceId = null;
-      // Switch to first available session if any
-      const firstSession = this.sessions.values().next().value as DeviceSession | undefined;
-      if (firstSession) {
-        this.switchToDevice(firstSession.deviceId);
-      }
+    // Switch to first available session if any
+    const deviceIds = this.appState.getDeviceIds();
+    if (deviceIds.length > 0 && this.appState.getActiveDeviceId() === null) {
+      this.switchToDevice(deviceIds[0]);
     }
-
-    this.notifySessionListChanged();
   }
+
+  // ==================== Device Monitoring ====================
 
   /**
    * Start monitoring for new devices using adb track-devices
-   * This is more efficient than polling - ADB pushes device changes to us
    */
   async startDeviceMonitoring(): Promise<void> {
-    if (this.isMonitoring) {
+    if (this.appState.isMonitoring()) {
       return;
     }
-    this.isMonitoring = true;
+    this.appState.setMonitoring(true);
 
     // Initialize known devices with currently connected sessions
     this.knownDeviceSerials.clear();
@@ -1294,7 +1087,7 @@ export class DeviceManager {
    * Start the adb track-devices process
    */
   private startTrackDevices(): void {
-    if (!this.isMonitoring) {
+    if (!this.appState.isMonitoring()) {
       return;
     }
 
@@ -1319,20 +1112,17 @@ export class DeviceManager {
         const length = parseInt(lengthHex, 16);
 
         if (isNaN(length)) {
-          // Invalid data, clear buffer
           buffer = '';
           break;
         }
 
         if (buffer.length < 4 + length) {
-          // Not enough data yet, wait for more
           break;
         }
 
         const deviceList = buffer.substring(4, 4 + length);
         buffer = buffer.substring(4 + length);
 
-        // Process device list
         this.enqueueDeviceListUpdate(deviceList);
       }
     });
@@ -1342,15 +1132,14 @@ export class DeviceManager {
     });
 
     this.trackDevicesProcess.on('close', () => {
-      // Restart if still monitoring (process died unexpectedly)
-      if (this.isMonitoring) {
+      if (this.appState.isMonitoring()) {
         this.trackDevicesRestartTimeout = setTimeout(() => this.startTrackDevices(), 1000);
       }
     });
   }
 
   /**
-   * Ensure device list updates are processed sequentially to avoid races.
+   * Ensure device list updates are processed sequentially
    */
   private enqueueDeviceListUpdate(deviceList: string): void {
     this.deviceListUpdateChain = this.deviceListUpdateChain
@@ -1366,11 +1155,10 @@ export class DeviceManager {
    * Handle device list update from track-devices
    */
   private async handleDeviceListUpdate(deviceList: string): Promise<void> {
-    if (!this.isMonitoring || !this.config.autoConnect) {
+    if (!this.appState.isMonitoring() || !this.config.autoConnect) {
       return;
     }
 
-    // Parse device list (same format as 'adb devices' output, without header)
     const lines = deviceList
       .trim()
       .split('\n')
@@ -1381,13 +1169,12 @@ export class DeviceManager {
       const parts = line.trim().split(/\s+/);
       if (parts.length >= 2 && parts[1] === 'device') {
         const serial = parts[0];
-        // Skip mDNS devices
         if (serial.includes('_adb-tls-connect')) {
           continue;
         }
         currentDevices.push({
           serial,
-          name: serial, // We'll get the model name when connecting
+          name: serial,
           model: undefined,
         });
       }
@@ -1397,7 +1184,7 @@ export class DeviceManager {
 
     // Find new USB devices and auto-connect
     for (const device of currentDevices) {
-      if (!this.isMonitoring) {
+      if (!this.appState.isMonitoring()) {
         return;
       }
       // Skip WiFi devices for auto-connect
@@ -1425,7 +1212,7 @@ export class DeviceManager {
         this.statusCallback('', vscode.l10n.t('Connecting to {0}...', device.name));
 
         try {
-          if (!this.isMonitoring) {
+          if (!this.appState.isMonitoring()) {
             return;
           }
           await this.addDevice(device);
@@ -1448,7 +1235,7 @@ export class DeviceManager {
    * Stop monitoring for new devices
    */
   stopDeviceMonitoring(): void {
-    this.isMonitoring = false;
+    this.appState.setMonitoring(false);
     if (this.trackDevicesRestartTimeout) {
       clearTimeout(this.trackDevicesRestartTimeout);
       this.trackDevicesRestartTimeout = null;
@@ -1462,19 +1249,9 @@ export class DeviceManager {
   }
 
   /**
-   * Check if a device serial represents a WiFi connection (IP:port format)
+   * Check if a device serial represents a WiFi connection
    */
   private isWifiDevice(serial: string): boolean {
     return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/.test(serial);
-  }
-
-  private notifySessionListChanged(): void {
-    const sessionList: SessionInfo[] = Array.from(this.sessions.values()).map((s) => ({
-      deviceId: s.deviceId,
-      deviceInfo: s.deviceInfo,
-      isActive: s.isActive,
-      connectionState: s.connectionState,
-    }));
-    this.sessionListCallback(sessionList);
   }
 }

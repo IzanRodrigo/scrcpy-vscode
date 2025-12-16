@@ -2,36 +2,35 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execFile, spawn } from 'child_process';
 import { MockChildProcess, resetMocks as resetChildProcessMocks } from '../mocks/child_process';
 
-// Mock child_process module before importing DeviceManager
+// Mock child_process module before importing DeviceService
 vi.mock('child_process', () => import('../mocks/child_process'));
 
 // Mock vscode module
 vi.mock('vscode', () => import('../mocks/vscode'));
 
 // Import after mocks are set up
-import { DeviceManager } from '../../src/DeviceManager';
+import { DeviceService } from '../../src/DeviceService';
+import { AppStateManager } from '../../src/AppStateManager';
 import { ScrcpyConfig } from '../../src/ScrcpyConnection';
 
-describe('DeviceManager', () => {
-  let manager: DeviceManager;
+describe('DeviceService', () => {
+  let service: DeviceService;
+  let appState: AppStateManager;
   let videoCallback: ReturnType<typeof vi.fn>;
   let audioCallback: ReturnType<typeof vi.fn>;
   let statusCallback: ReturnType<typeof vi.fn>;
-  let sessionListCallback: ReturnType<typeof vi.fn>;
   let errorCallback: ReturnType<typeof vi.fn>;
-  let connectionStateCallback: ReturnType<typeof vi.fn>;
   let config: ScrcpyConfig;
 
   beforeEach(() => {
     resetChildProcessMocks();
     vi.clearAllMocks();
 
+    appState = new AppStateManager();
     videoCallback = vi.fn();
     audioCallback = vi.fn();
     statusCallback = vi.fn();
-    sessionListCallback = vi.fn();
     errorCallback = vi.fn();
-    connectionStateCallback = vi.fn();
 
     config = {
       scrcpyPath: '',
@@ -51,19 +50,18 @@ describe('DeviceManager', () => {
       videoCodec: 'h264',
     };
 
-    manager = new DeviceManager(
+    service = new DeviceService(
+      appState,
       videoCallback,
       audioCallback,
       statusCallback,
-      sessionListCallback,
       errorCallback,
-      connectionStateCallback,
       config
     );
   });
 
   afterEach(async () => {
-    await manager.disconnectAll();
+    await service.disconnectAll();
   });
 
   describe('getAvailableDevices', () => {
@@ -81,7 +79,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(1);
       expect(devices[0]).toMatchObject({
@@ -111,7 +109,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(3);
       expect(devices[0].serial).toBe('emulator-5554');
@@ -139,7 +137,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(1);
       expect(devices[0].serial).toBe('emulator-5554');
@@ -159,7 +157,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(0);
     });
@@ -178,7 +176,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(0);
     });
@@ -204,7 +202,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(1);
       expect(devices[0].serial).toBe('emulator-5554');
@@ -224,7 +222,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(1);
       expect(devices[0]).toMatchObject({
@@ -235,14 +233,13 @@ describe('DeviceManager', () => {
     });
   });
 
-  describe('session management', () => {
-    it('should have no active sessions initially', () => {
-      const sessions = manager.getAllSessions();
-      expect(sessions).toHaveLength(0);
+  describe('state management', () => {
+    it('should have no devices initially', () => {
+      expect(appState.getDeviceCount()).toBe(0);
     });
 
-    it('should return null for active session initially', () => {
-      expect(manager.getActiveSession()).toBeNull();
+    it('should return null for active device initially', () => {
+      expect(appState.getActiveDeviceId()).toBeNull();
     });
   });
 
@@ -251,7 +248,7 @@ describe('DeviceManager', () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      const pairPromise = manager.pairWifi('192.168.1.100:5555', '123456');
+      const pairPromise = service.pairWifi('192.168.1.100:5555', '123456');
 
       // Simulate ADB prompting for pairing code
       setTimeout(() => {
@@ -274,7 +271,7 @@ describe('DeviceManager', () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      const pairPromise = manager.pairWifi('192.168.1.100:5555', 'wrong-code');
+      const pairPromise = service.pairWifi('192.168.1.100:5555', 'wrong-code');
 
       // Simulate pairing failure
       setTimeout(() => {
@@ -303,7 +300,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const result = await manager.connectWifi('192.168.1.100', 5555);
+      const result = await service.connectWifi('192.168.1.100', 5555);
 
       expect(execFile).toHaveBeenCalledWith(
         'adb',
@@ -330,7 +327,7 @@ describe('DeviceManager', () => {
       );
 
       // Should not throw for "already connected" - it's a success case
-      const result = await manager.connectWifi('192.168.1.100', 5555);
+      const result = await service.connectWifi('192.168.1.100', 5555);
       expect(result.serial).toBe('192.168.1.100:5555');
     });
 
@@ -350,7 +347,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      await expect(manager.connectWifi('192.168.1.100', 5555)).rejects.toThrow();
+      await expect(service.connectWifi('192.168.1.100', 5555)).rejects.toThrow();
     });
   });
 
@@ -371,7 +368,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      await manager.disconnectWifi('192.168.1.100:5555');
+      await service.disconnectWifi('192.168.1.100:5555');
 
       expect(execFile).toHaveBeenCalledWith(
         'adb',
@@ -389,20 +386,20 @@ describe('DeviceManager', () => {
         bitRate: 4,
       };
 
-      manager.updateConfig(newConfig);
+      service.updateConfig(newConfig);
 
       // Configuration should be stored for new sessions
       // (internal state, so we just verify no error)
-      expect(() => manager.updateConfig(newConfig)).not.toThrow();
+      expect(() => service.updateConfig(newConfig)).not.toThrow();
     });
   });
 
   describe('disconnectAll', () => {
     it('should clean up all sessions on disconnectAll', async () => {
-      await manager.disconnectAll();
+      await service.disconnectAll();
 
-      expect(manager.getAllSessions()).toHaveLength(0);
-      expect(manager.getActiveSession()).toBeNull();
+      expect(appState.getDeviceCount()).toBe(0);
+      expect(appState.getActiveDeviceId()).toBeNull();
     });
   });
 
@@ -428,7 +425,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       // WiFi devices have IP:port format, USB devices don't
       if (isWifi) {
@@ -458,7 +455,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       expect(devices).toHaveLength(1);
       expect(devices[0].model).toBe(expectedModel);
@@ -488,7 +485,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const devices = await manager.getAvailableDevices();
+      const devices = await service.getAvailableDevices();
 
       // Only 'device' state should be included
       expect(devices).toHaveLength(2);
@@ -499,22 +496,8 @@ describe('DeviceManager', () => {
   describe('duplicate device prevention', () => {
     it('should track connected device serials to prevent duplicates', () => {
       // Initially no devices connected
-      expect(manager.isDeviceConnected('emulator-5554')).toBe(false);
-      expect(manager.isDeviceConnected('192.168.1.100:5555')).toBe(false);
-    });
-  });
-
-  describe('session state management', () => {
-    it('should return sessions as array from getAllSessions', () => {
-      const sessions = manager.getAllSessions();
-      expect(Array.isArray(sessions)).toBe(true);
-      expect(sessions).toHaveLength(0);
-    });
-
-    it('should notify session list changes via callback', async () => {
-      // The callback should be called when sessions change
-      // Initial state has no sessions
-      expect(sessionListCallback).not.toHaveBeenCalled();
+      expect(service.isDeviceConnected('emulator-5554')).toBe(false);
+      expect(service.isDeviceConnected('192.168.1.100:5555')).toBe(false);
     });
   });
 
@@ -523,22 +506,22 @@ describe('DeviceManager', () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      await manager.startDeviceMonitoring();
-      await manager.startDeviceMonitoring(); // Second call should be no-op
+      await service.startDeviceMonitoring();
+      await service.startDeviceMonitoring(); // Second call should be no-op
 
       // Only one spawn call for track-devices
       expect(spawn).toHaveBeenCalledTimes(1);
       expect(spawn).toHaveBeenCalledWith('adb', ['track-devices']);
 
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
     });
 
     it('should stop monitoring and clean up process', async () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      await manager.startDeviceMonitoring();
-      manager.stopDeviceMonitoring();
+      await service.startDeviceMonitoring();
+      service.stopDeviceMonitoring();
 
       expect(mockProcess.kill).toHaveBeenCalled();
     });
@@ -548,9 +531,9 @@ describe('DeviceManager', () => {
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       // Configure to enable auto-connect
-      manager.updateConfig({ ...config, autoConnect: true });
+      service.updateConfig({ ...config, autoConnect: true });
 
-      await manager.startDeviceMonitoring();
+      await service.startDeviceMonitoring();
 
       // Simulate track-devices output: 4-char hex length + device list
       // "001a" = 26 bytes for "emulator-5554\tdevice\n" (roughly)
@@ -560,29 +543,29 @@ describe('DeviceManager', () => {
       // Simulate the data coming in
       mockProcess.stdout.emit('data', Buffer.from(hexLength + deviceList));
 
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
     });
 
     it('should handle fragmented track-devices data', async () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      await manager.startDeviceMonitoring();
+      await service.startDeviceMonitoring();
 
       // Send data in fragments (first the length, then partial data)
       mockProcess.stdout.emit('data', Buffer.from('00'));
       mockProcess.stdout.emit('data', Buffer.from('14'));
       mockProcess.stdout.emit('data', Buffer.from('emulator-5554\tdevice\n'));
 
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
     });
 
     it('should skip mDNS devices in track-devices output', async () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      manager.updateConfig({ ...config, autoConnect: true });
-      await manager.startDeviceMonitoring();
+      service.updateConfig({ ...config, autoConnect: true });
+      await service.startDeviceMonitoring();
 
       // mDNS devices should be filtered out
       const deviceList = 'adb-12345._adb-tls-connect._tcp\tdevice\n';
@@ -591,21 +574,21 @@ describe('DeviceManager', () => {
       mockProcess.stdout.emit('data', Buffer.from(hexLength + deviceList));
 
       // No auto-connect should happen for mDNS devices
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
     });
 
     it('should handle invalid hex length gracefully', async () => {
       const mockProcess = new MockChildProcess();
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      await manager.startDeviceMonitoring();
+      await service.startDeviceMonitoring();
 
       // Send invalid data (not hex)
       expect(() => {
         mockProcess.stdout.emit('data', Buffer.from('ZZZZ'));
       }).not.toThrow();
 
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
     });
 
     it('should restart track-devices process on unexpected close', async () => {
@@ -614,7 +597,7 @@ describe('DeviceManager', () => {
       const mockProcess2 = new MockChildProcess();
       vi.mocked(spawn).mockReturnValueOnce(mockProcess1).mockReturnValueOnce(mockProcess2);
 
-      await manager.startDeviceMonitoring();
+      await service.startDeviceMonitoring();
       expect(spawn).toHaveBeenCalledTimes(1);
 
       // Simulate process dying
@@ -624,7 +607,7 @@ describe('DeviceManager', () => {
       await vi.advanceTimersByTimeAsync(1100);
       expect(spawn).toHaveBeenCalledTimes(2);
 
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
       vi.useRealTimers();
     });
 
@@ -634,14 +617,14 @@ describe('DeviceManager', () => {
       const mockProcess2 = new MockChildProcess();
       vi.mocked(spawn).mockReturnValueOnce(mockProcess1).mockReturnValueOnce(mockProcess2);
 
-      await manager.startDeviceMonitoring();
+      await service.startDeviceMonitoring();
       expect(spawn).toHaveBeenCalledTimes(1);
 
       // Simulate process dying (schedules restart)
       mockProcess1.emit('close');
 
       // Stop monitoring before the restart timer fires
-      manager.stopDeviceMonitoring();
+      service.stopDeviceMonitoring();
 
       await vi.advanceTimersByTimeAsync(1100);
       expect(spawn).toHaveBeenCalledTimes(1);
@@ -675,7 +658,7 @@ describe('DeviceManager', () => {
         }
       );
 
-      const info = await manager.getDeviceInfo('test-device');
+      const info = await service.getDeviceInfo('test-device');
 
       // Storage should be parsed (128G = 128 * 1024^3 bytes)
       expect(info.storageTotal).toBeGreaterThan(0);

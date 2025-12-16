@@ -162,7 +162,7 @@ For specific camera configurations:
 - Added camera settings to reconnect trigger list
 - Added `listCameras()` method to show available cameras in a quick pick
 
-#### 5. DeviceManager.ts
+#### 5. DeviceService.ts
 
 - Added `listCameras()` method to delegate to active session
 

@@ -41,7 +41,7 @@ The app launcher feature is implemented across several components:
    - `getInstalledApps(thirdPartyOnly: boolean)`: Fetches the list of installed apps via ADB
    - `startApp(packageName: string)`: Sends the START_APP control message to the scrcpy server
 
-2. **DeviceManager.ts**: Device session management
+2. **DeviceService.ts**: Device session management
    - `getInstalledApps(thirdPartyOnly: boolean)`: Delegates to the active device's connection
    - `launchApp(packageName: string)`: Delegates to the active device's connection
 
@@ -89,7 +89,7 @@ The feature uses the following ADB command:
   - Added `startApp(packageName: string)` method (lines 1110-1132)
   - Added `getInstalledApps(thirdPartyOnly: boolean)` method (lines 1139-1181)
 
-- `/Users/izan/Dev/Projects/scrcpy-vscode-app-launcher/src/DeviceManager.ts`
+- `/Users/izan/Dev/Projects/scrcpy-vscode-app-launcher/src/DeviceService.ts`
   - Added `launchApp(packageName: string)` method (lines 757-763)
   - Added `getInstalledApps(thirdPartyOnly: boolean)` method (lines 768-776)
 

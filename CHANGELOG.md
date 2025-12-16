@@ -21,11 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warning alert now shows structured title ("Missing dependency") with detailed subtitle message
 - Buttons in empty state now use pill shape for modern appearance
 - Simplified command titles by removing "Scrcpy:" prefix for cleaner menu display
+- **State management refactored** - Centralized all application state in `AppStateManager` with single source of truth pattern
+- Renamed `DeviceManager` to `DeviceService` with state delegation to `AppStateManager`
+- Webview now receives unified `stateSnapshot` messages instead of multiple partial update messages
+- Removed legacy message handlers (`sessionList`, `connectionStateChanged`, `settings`, `toolStatus`)
 
 ### Fixed
 
 - Tool status UI not updating after resetting path settings from invalid to valid paths
 - Added status bar feedback when updating or resetting path settings
+- Eliminated state duplication between extension host and webview
+- Fixed potential race conditions from partial state updates
 
 ## [0.1.1] - 2025-12-15
 

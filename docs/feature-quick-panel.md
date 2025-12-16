@@ -56,14 +56,14 @@ The implementation follows the existing scrcpy-vscode architecture:
 
 1. **WebView UI** (WebviewTemplate.ts): Defines the HTML buttons with bell and gear icons
 2. **WebView Handler** (main.ts): Handles button click events and posts messages to the extension
-3. **Message Router** (ScrcpyViewProvider.ts): Routes messages to the DeviceManager
-4. **Device Manager** (DeviceManager.ts): Delegates commands to the active device session
+3. **Message Router** (ScrcpyViewProvider.ts): Routes messages to the DeviceService
+4. **Device Manager** (DeviceService.ts): Delegates commands to the active device session
 5. **Connection** (ScrcpyConnection.ts): Sends the control messages over the control socket
 
 ### Message Flow
 
 ```
-Button Click → main.ts → ScrcpyViewProvider → DeviceManager → DeviceSession → ScrcpyConnection → Device
+Button Click → main.ts → ScrcpyViewProvider → DeviceService → DeviceSession → ScrcpyConnection → Device
 ```
 
 ### Code Structure
@@ -95,7 +95,7 @@ collapsePanels(): void {
 }
 ```
 
-#### DeviceManager.ts
+#### DeviceService.ts
 
 ```typescript
 expandNotificationPanel(): void {

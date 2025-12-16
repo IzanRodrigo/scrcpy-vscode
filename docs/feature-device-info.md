@@ -72,7 +72,7 @@ adb -s SERIAL shell ip route | grep wlan
 ### Caching Strategy
 
 - **Client-side cache**: Webview caches device info by serial number
-- **Server-side cache**: DeviceManager maintains a cache with 30-second TTL
+- **Server-side cache**: DeviceService maintains a cache with 30-second TTL
 - **Automatic refresh**: Background interval refreshes all connected devices every 30 seconds
 - **On-demand fetch**: First hover triggers an immediate fetch if not cached
 
