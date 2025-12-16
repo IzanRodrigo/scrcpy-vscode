@@ -69,7 +69,12 @@ export const execFile = vi.fn(
       | ((error: Error | null, stdout: string, stderr: string) => void),
     callback?: (error: Error | null, stdout: string, stderr: string) => void
   ) => {
-    const cb = typeof argsOrOptionsOrCallback === 'function' ? argsOrOptionsOrCallback : callback;
+    const cb =
+      typeof argsOrOptionsOrCallback === 'function'
+        ? argsOrOptionsOrCallback
+        : typeof optionsOrCallback === 'function'
+          ? optionsOrCallback
+          : callback;
 
     // Default success - override in tests using mockImplementation
     if (cb) {
