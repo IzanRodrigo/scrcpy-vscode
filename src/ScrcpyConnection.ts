@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { ScrcpyProtocol } from './ScrcpyProtocol';
+import { ToolNotFoundError, ToolErrorCode } from './types/AppState';
 
 // Video codec type
 export type VideoCodecType = 'h264' | 'h265' | 'av1';
@@ -603,7 +604,8 @@ export class ScrcpyConnection {
         if (error) {
           const { scrcpy } = this.getInstallInstructions();
           reject(
-            new Error(
+            new ToolNotFoundError(
+              ToolErrorCode.SCRCPY_NOT_FOUND,
               vscode.l10n.t(
                 'scrcpy not found.\n\nInstall via: {0}\n\nOr download from: {1}\n\nAlternatively, configure the path in Settings.',
                 scrcpy.command,

@@ -6,6 +6,27 @@
  */
 
 /**
+ * Error codes for tool-related errors
+ */
+export enum ToolErrorCode {
+  SCRCPY_NOT_FOUND = 'SCRCPY_NOT_FOUND',
+  ADB_NOT_FOUND = 'ADB_NOT_FOUND',
+}
+
+/**
+ * Custom error class for tool-not-found errors
+ */
+export class ToolNotFoundError extends Error {
+  constructor(
+    public readonly code: ToolErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = 'ToolNotFoundError';
+  }
+}
+
+/**
  * Connection state for a device
  */
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';

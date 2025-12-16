@@ -38,8 +38,11 @@ export type StatusCallback = (deviceId: string, status: string) => void;
 
 /**
  * Callback for errors
+ * @param deviceId - The device ID associated with the error
+ * @param message - Human-readable error message
+ * @param error - Optional original error object for type checking
  */
-export type ErrorCallback = (deviceId: string, message: string) => void;
+export type ErrorCallback = (deviceId: string, message: string, error?: Error) => void;
 
 /**
  * Internal session data for a connected device
@@ -632,6 +635,9 @@ export class DeviceService {
       // Update state to connected
       this.appState.updateDeviceConnectionState(session.deviceId, 'connected');
 
+      // Clear any loading status message now that we're connected
+      this.appState.clearStatusMessage();
+
       // Notify if we fell back to a different codec
       if (session.effectiveCodec !== this.config.videoCodec) {
         this.statusCallback(
@@ -672,7 +678,7 @@ export class DeviceService {
 
       // No more fallbacks available
       this.appState.updateDeviceConnectionState(session.deviceId, 'disconnected');
-      this.errorCallback(session.deviceId, message);
+      this.errorCallback(session.deviceId, message, error instanceof Error ? error : undefined);
       throw error;
     }
   }
@@ -824,9 +830,19 @@ export class DeviceService {
     // Remove from AppState
     this.appState.removeDevice(deviceId);
 
-    // If removed active device, switch to first available
+    // Check remaining devices
     const deviceIds = this.appState.getDeviceIds();
-    if (deviceIds.length > 0 && this.appState.getActiveDeviceId() === null) {
+
+    if (deviceIds.length === 0) {
+      // No devices left - clear any error/loading messages and show empty state
+      this.appState.setStatusMessage({
+        type: 'empty',
+        text: vscode.l10n.t(
+          'No Android devices found.\n\nPlease connect a device and enable USB debugging.'
+        ),
+      });
+    } else if (this.appState.getActiveDeviceId() === null) {
+      // If removed active device, switch to first available
       this.switchToDevice(deviceIds[0]);
     }
   }

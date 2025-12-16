@@ -123,10 +123,16 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       flex-shrink: 0;
       cursor: help;
+      border-radius: 50%;
+      transition: background-color 0.2s;
+    }
+
+    .tab-status:hover {
+      background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
     }
 
     .tab-status-icon {
@@ -135,22 +141,22 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       transition: color 0.2s;
     }
 
-    /* Connection states */
+    /* Connection states - using tab accent color for better visibility */
     .tab-status-connecting .tab-status-icon {
-      color: #0078d4;
+      color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder, #007fd4));
       animation: pulse 1.5s ease-in-out infinite;
     }
 
     .tab-status-connected .tab-status-icon {
-      color: #4ec9b0;
+      color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder, #007fd4));
     }
 
     .tab-status-disconnected .tab-status-icon {
-      color: #808080;
+      color: var(--vscode-disabledForeground, #808080);
     }
 
     .tab-status-reconnecting .tab-status-icon {
-      color: #ce9178;
+      color: var(--vscode-editorWarning-foreground, #cca700);
       animation: pulse 1.5s ease-in-out infinite;
     }
 
@@ -278,7 +284,9 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       width: 20px;
       height: 20px;
       border-radius: 4px;
-      font-size: 16px;
+      font-size: 18px;
+      line-height: 1;
+      padding-bottom: 2px;
       opacity: 0; /* Hidden by default until hover or active */
       color: inherit;
     }
@@ -319,6 +327,12 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
     .device-info-tooltip .info-row {
       margin: 2px 0;
+    }
+
+    .device-info-tooltip .info-row-bottom {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
     }
 
     .device-info-tooltip .info-label {

@@ -6,6 +6,7 @@ import { ScrcpyConfig } from './ScrcpyConnection';
 import { DeviceService } from './DeviceService';
 import { AppStateManager, Unsubscribe } from './AppStateManager';
 import { ToolCheckResult } from './ToolChecker';
+import { ToolNotFoundError, ToolErrorCode } from './types/AppState';
 
 export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'scrcpy.deviceView';
@@ -146,6 +147,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
             this._deviceService.updateConfig(this._getConfig());
             await this._deviceService.disconnectAll();
             await this._autoConnectAllDevices();
+
+            // Clear loading message if devices connected successfully
+            // (empty state and errors are handled within _autoConnectAllDevices and removeDevice)
+            if (this._appState && this._appState.getDeviceCount() > 0) {
+              this._appState.clearStatusMessage();
+            }
           }
         }
       },
@@ -299,10 +306,28 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         });
       },
       // Error callback
-      (deviceId, message) => {
+      (deviceId, message, error) => {
         if (this._isDisposed || !this._appState) {
           return;
         }
+
+        // Handle tool-not-found errors by updating tool status
+        if (error instanceof ToolNotFoundError) {
+          if (error.code === ToolErrorCode.SCRCPY_NOT_FOUND) {
+            this._appState.updateToolStatus({
+              adbAvailable: this._toolStatus?.adb.isAvailable ?? true,
+              scrcpyAvailable: false,
+            });
+          } else if (error.code === ToolErrorCode.ADB_NOT_FOUND) {
+            this._appState.updateToolStatus({
+              adbAvailable: false,
+              scrcpyAvailable: this._toolStatus?.scrcpy.isAvailable ?? true,
+            });
+          }
+          // Don't show error message - the webview will show missing dependency warning
+          return;
+        }
+
         this._appState.setStatusMessage({
           type: 'error',
           text: message,
@@ -325,6 +350,12 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     if (!this._deviceService || !this._appState) {
       return;
     }
+
+    // Show loading while checking for devices (will be replaced by connection status or empty state)
+    this._appState.setStatusMessage({
+      type: 'loading',
+      text: vscode.l10n.t('Searching for devices...'),
+    });
 
     try {
       const devices = await this._deviceService.getAvailableDevices();

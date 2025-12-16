@@ -1101,8 +1101,11 @@ function createDeviceSession(
   tab.className = 'tab';
   tab.dataset.deviceId = deviceId;
 
-  // Info icon (ⓘ) for connection status - changes color based on state
-  const infoIcon = `<svg class="tab-status-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13,9H11V7H13M13,17H11V11H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg>`;
+  // Info icon (ⓘ) for connection status - circle in accent color, "i" in white
+  const infoIcon = `<svg class="tab-status-icon" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" fill="currentColor"/>
+    <path d="M13,9H11V7H13M13,17H11V11H13" fill="white"/>
+  </svg>`;
 
   tab.innerHTML = `
     <div class="tab-status tab-status-connecting">
@@ -1579,21 +1582,10 @@ function updateTooltipContent(serial: string, info: DeviceDetailedInfo) {
     content += `<div class="info-row"><strong>${escapeHtml(manufacturer)} ${escapeHtml(model)}</strong></div>`;
   }
 
-  // Connection type
-  content += `<div class="info-row">${connectionIcon} ${connectionType}</div>`;
-
   if (androidVersion) {
     content += `<div class="info-row">Android ${escapeHtml(androidVersion)}`;
     if (sdkVersion) {
       content += ` (SDK ${sdkVersion})`;
-    }
-    content += `</div>`;
-  }
-
-  if (batteryLevel > 0) {
-    content += `<div class="info-row">${batteryIcon} ${batteryLevel}%`;
-    if (batteryCharging) {
-      content += ' (charging)';
     }
     content += `</div>`;
   }
@@ -1614,23 +1606,35 @@ function updateTooltipContent(serial: string, info: DeviceDetailedInfo) {
     content += `<div class="info-row">${escapeHtml(ipAddress)}</div>`;
   }
 
+  // Connection type and battery at the bottom, on the same row
+  let bottomRow = `${connectionIcon} ${connectionType}`;
+  if (batteryLevel > 0) {
+    bottomRow += ` · ${batteryIcon} ${batteryLevel}%`;
+    if (batteryCharging) {
+      bottomRow += ' ⚡';
+    }
+  }
+  content += `<div class="info-row info-row-bottom">${bottomRow}</div>`;
+
   content += '</div>';
   deviceInfoTooltip.innerHTML = content;
 }
 
 /**
- * Attach tooltip handlers to a tab
+ * Attach tooltip handlers to the info indicator in a tab
  */
 function attachTooltipHandlers(tab: HTMLElement, serial: string) {
-  // Show tooltip on hover (but not on close button)
-  tab.addEventListener('mouseenter', (e) => {
-    const target = e.target as HTMLElement;
-    if (!target.classList.contains('tab-close')) {
-      showDeviceInfoTooltip(tab, serial);
-    }
+  const infoIndicator = tab.querySelector('.tab-status') as HTMLElement;
+  if (!infoIndicator) {
+    return;
+  }
+
+  // Show tooltip only when hovering the info indicator
+  infoIndicator.addEventListener('mouseenter', () => {
+    showDeviceInfoTooltip(tab, serial);
   });
 
-  tab.addEventListener('mouseleave', () => {
+  infoIndicator.addEventListener('mouseleave', () => {
     hideDeviceInfoTooltip();
   });
 }
