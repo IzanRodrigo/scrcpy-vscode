@@ -1,8 +1,8 @@
 # Scrcpy for VS Code
 
-[![Visual Studio Marketplace Version](https://img.shields.io/visualstudio-marketplace/v/izantech.scrcpy-vscode?style=flat-square&color=007acc)](https://marketplace.visualstudio.com/items?itemName=izantech.scrcpy-vscode)
-[![Installs](https://img.shields.io/visualstudio-marketplace/i/izantech.scrcpy-vscode?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=izantech.scrcpy-vscode)
-[![Rating](https://img.shields.io/visualstudio-marketplace/r/izantech.scrcpy-vscode?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=izantech.scrcpy-vscode)
+![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/izantech.scrcpy-vscode)
+![Visual Studio Marketplace Installs - Azure DevOps Extension](https://img.shields.io/visual-studio-marketplace/azure-devops/installs/total/izantech.scrcpy-vscode)
+![Visual Studio Marketplace Rating](https://img.shields.io/visual-studio-marketplace/stars/izantech.scrcpy-vscode)
 
 Display and control your Android device screen directly within VS Code, similar to Android Studio's "Running Devices" feature.
 
