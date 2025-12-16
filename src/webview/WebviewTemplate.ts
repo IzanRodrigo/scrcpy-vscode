@@ -337,6 +337,20 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       margin: 2px 0;
     }
 
+    .device-info-tooltip .info-row-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .device-info-tooltip .info-row-header .tab-platform-icon {
+      width: 16px;
+      height: 16px;
+      opacity: 0.9;
+      margin-right: 0;
+    }
+
     .device-info-tooltip .info-row-bottom {
       margin-top: 6px;
       padding-top: 6px;

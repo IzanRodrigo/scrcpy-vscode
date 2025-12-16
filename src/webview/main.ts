@@ -1229,14 +1229,10 @@ function createDeviceSession(
     <path d="M13,9H11V7H13M13,17H11V11H13" fill="white"/>
   </svg>`;
 
-  // Platform icon (Android/iOS)
-  const platformIcon = getPlatformIcon(platform);
-
   tab.innerHTML = `
     <div class="tab-status tab-status-connecting">
       ${infoIcon}
     </div>
-    ${platformIcon}
     <span class="tab-label">${escapeHtml(deviceInfo.name)}</span>
     <span class="tab-close">&times;</span>
   `;
@@ -1696,6 +1692,15 @@ function updateTooltipContent(serial: string, info: DeviceDetailedInfo) {
     ipAddress,
   } = info;
 
+  // Find the session to get platform info
+  let platform: DevicePlatform = 'android';
+  for (const session of sessions.values()) {
+    if (session.deviceInfo.serial === serial) {
+      platform = session.platform;
+      break;
+    }
+  }
+
   // Determine connection type
   const isWifi = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(serial);
   const connectionType = isWifi ? 'WiFi' : 'USB';
@@ -1711,12 +1716,16 @@ function updateTooltipContent(serial: string, info: DeviceDetailedInfo) {
   // Build tooltip content
   let content = '<div class="device-info-content">';
 
+  // Platform icon and manufacturer/model on same row
+  const platformIcon = getPlatformIcon(platform);
   if (manufacturer && model) {
-    content += `<div class="info-row"><strong>${escapeHtml(manufacturer)} ${escapeHtml(model)}</strong></div>`;
+    content += `<div class="info-row info-row-header">${platformIcon}<strong>${escapeHtml(manufacturer)} ${escapeHtml(model)}</strong></div>`;
+  } else {
+    content += `<div class="info-row info-row-header">${platformIcon}<strong>${platform === 'ios' ? 'iOS Device' : 'Android Device'}</strong></div>`;
   }
 
   if (androidVersion) {
-    content += `<div class="info-row">Android ${escapeHtml(androidVersion)}`;
+    content += `<div class="info-row">${platform === 'ios' ? 'iOS' : 'Android'} ${escapeHtml(androidVersion)}`;
     if (sdkVersion) {
       content += ` (SDK ${sdkVersion})`;
     }
@@ -1731,7 +1740,7 @@ function updateTooltipContent(serial: string, info: DeviceDetailedInfo) {
     // Parse resolution and format with × symbol
     const match = screenResolution.match(/(\d+)x(\d+)/);
     if (match) {
-      content += `<div class="info-row">${match[1]} × ${match[2]}</div>`;
+      content += `<div class="info-row">🖥️ ${match[1]} × ${match[2]}</div>`;
     }
   }
 
