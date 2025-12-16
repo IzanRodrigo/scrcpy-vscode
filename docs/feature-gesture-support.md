@@ -31,7 +31,7 @@ The `InputHandler` class in `src/webview/InputHandler.ts` detects and processes 
 The implementation follows a layered architecture:
 
 ```
-Canvas (Browser) → InputHandler → main.ts → ScrcpyViewProvider → DeviceManager → ScrcpyConnection → Device
+Canvas (Browser) → InputHandler → main.ts → ScrcpyViewProvider → DeviceService → ScrcpyConnection → Device
 ```
 
 #### 1. InputHandler (src/webview/InputHandler.ts)
@@ -85,7 +85,7 @@ case 'multiTouch':
   );
 ```
 
-#### 4. Device Session (src/DeviceManager.ts)
+#### 4. Device Session (src/DeviceService.ts)
 
 Each device session forwards multi-touch events to its connection:
 
@@ -158,11 +158,11 @@ Offset | Size | Field
 3. **src/ScrcpyViewProvider.ts**
    - Added `x1`, `y1`, `x2`, `y2` fields to message type
    - Added `multiTouch` case to message handler
-   - Calls `DeviceManager.sendMultiTouch()`
+   - Calls `DeviceService.sendMultiTouch()`
 
-4. **src/DeviceManager.ts**
+4. **src/DeviceService.ts**
    - Added `sendMultiTouch()` method to `DeviceSession` class
-   - Added `sendMultiTouch()` method to `DeviceManager` class
+   - Added `sendMultiTouch()` method to `DeviceService` class
    - Forwards multi-touch events to active device connection
 
 5. **src/ScrcpyConnection.ts**

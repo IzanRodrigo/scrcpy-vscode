@@ -103,9 +103,13 @@ Configure these in repository Settings > Secrets and variables > Actions:
 src/
 ├── extension.ts          # Entry point, registers provider and commands
 ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar view
-├── DeviceManager.ts      # Multi-device session management
+├── AppStateManager.ts    # Centralized state management (single source of truth)
+├── DeviceService.ts      # Multi-device session management
 ├── ScrcpyConnection.ts   # ADB communication, scrcpy protocol
 ├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
+├── types/
+│   ├── AppState.ts       # State interfaces (DeviceState, AppStateSnapshot, etc.)
+│   └── WebviewActions.ts # Typed actions from webview to extension
 └── webview/
     ├── main.ts           # WebView entry, message handling, tab management
     ├── VideoRenderer.ts  # WebCodecs H.264/H.265/AV1 decoder (with pause/resume)
@@ -121,16 +125,24 @@ src/
 
 - **ScrcpyViewProvider.ts**: WebviewView provider
   - Implements `vscode.WebviewViewProvider` for sidebar integration
-  - Uses `DeviceManager` for multi-device support
+  - Creates `AppStateManager` (single source of truth) and `DeviceService`
+  - Subscribes to state changes and sends `stateSnapshot` messages to webview
   - Auto-connects ALL available devices on startup (USB and WiFi already in ADB)
   - Reads settings from `vscode.workspace.getConfiguration('scrcpy')`
   - Listens for config changes and auto-reconnects
-  - Handles message passing between extension and webview
+  - Routes actions from webview to DeviceService
   - Generates HTML with tab bar (top), canvas container (center), control toolbar (bottom)
   - Handles view lifecycle (move between sidebars, dispose/recreate) using `AbortController` to cancel stale async operations
 
-- **DeviceManager.ts**: Multi-device session management
+- **AppStateManager.ts**: Centralized state management
+  - Single source of truth for all application state
+  - Manages devices, activeDeviceId, settings, toolStatus, statusMessage, deviceInfo
+  - Emits state snapshots on any change via subscription
+  - Uses microtask scheduling to batch multiple mutations
+
+- **DeviceService.ts**: Multi-device session management
   - Manages multiple `ScrcpyConnection` instances (one per device)
+  - Delegates state ownership to `AppStateManager`
   - `getAvailableDevices()`: Lists connected ADB devices with model names (excludes mDNS duplicates)
   - `addDevice()`: Connects to a specific device by serial, auto-switches to new device tab
   - `removeDevice()`: Disconnects and removes a device session
@@ -139,7 +151,6 @@ src/
   - `connectWifi()`: Connects to a device over WiFi using `adb connect`
   - `disconnectWifi()`: Disconnects a WiFi device using `adb disconnect`
   - Prevents duplicate device connections
-  - Notifies webview of session list changes
   - Device monitoring: Uses `adb track-devices` for efficient push-based detection (no polling)
   - Auto-connect: New USB devices are connected automatically (WiFi excluded from auto-connect, but included in startup)
   - Auto-reconnect: Configurable retries (1-5) with 1.5s delay on unexpected disconnect (works for both USB and WiFi)
@@ -303,14 +314,16 @@ npm run test:ui
 ```
 test/
 ├── unit/
+│   ├── AppStateManager.test.ts # Centralized state management tests (100% coverage)
 │   ├── CodecUtils.test.ts      # Video codec detection and configuration tests
 │   ├── ScrcpyProtocol.test.ts  # Protocol constants tests
 │   └── webview/
 │       ├── InputHandler.test.ts      # Pointer/scroll event tests
 │       ├── KeyboardHandler.test.ts   # Keyboard input tests
-│       └── RecordingManager.test.ts  # Screen recording tests
+│       ├── RecordingManager.test.ts  # Screen recording tests
+│       └── VideoRenderer.test.ts     # Video decoding and resize tests
 ├── integration/
-│   ├── DeviceManager.test.ts   # Device discovery & WiFi tests
+│   ├── DeviceService.test.ts   # Device discovery & WiFi tests
 │   └── ScrcpyConnection.test.ts # Connection & control tests
 ├── mocks/
 │   ├── vscode.ts       # VS Code API mock
@@ -321,7 +334,7 @@ test/
 └── setup.ts            # Global test setup
 ```
 
-**Coverage:** Tests cover ~50% of the codebase overall, with webview code at ~96% coverage.
+**Coverage:** Tests cover the extension host and webview components with full coverage for state management.
 
 **CI Integration:** Tests run automatically on every push/PR via GitHub Actions with coverage reporting to Codecov.
 

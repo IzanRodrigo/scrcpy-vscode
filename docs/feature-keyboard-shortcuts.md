@@ -154,7 +154,7 @@ public switchToTab(index: number): void {
 3. `switchToTabByIndex(1)` is called (0-indexed)
 4. Device ID at index 1 is retrieved from the tab bar
 5. Message sent to extension: `{ type: 'switchTab', deviceId: '...' }`
-6. Extension switches the active device via DeviceManager
+6. Extension switches the active device via DeviceService
 7. Extension sends messages to webview to pause/resume renderers
 
 **Command Palette Flow:**

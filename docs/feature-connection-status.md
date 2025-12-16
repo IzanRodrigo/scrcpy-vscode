@@ -38,19 +38,23 @@ The connection status feature provides visual feedback about the connection stat
 
 ### Architecture
 
-The connection status feature is implemented across three main layers:
+The connection status feature is implemented using a centralized state management pattern:
 
-1. **Backend (DeviceManager.ts)**
-   - Tracks connection state for each device session
-   - Notifies the frontend when state changes occur
+1. **State Manager (AppStateManager.ts)**
+   - Single source of truth for all application state including connection states
+   - Emits state snapshots on any change via subscription
    - Connection states: `connecting`, `connected`, `disconnected`, `reconnecting`
 
-2. **Bridge (ScrcpyViewProvider.ts)**
-   - Receives connection state callbacks from DeviceManager
-   - Sends `connectionStateChanged` messages to the webview
+2. **Device Service (DeviceService.ts)**
+   - Updates connection state via `AppStateManager.updateDeviceConnectionState()`
+   - Manages connection lifecycle and auto-reconnect logic
 
-3. **Frontend (main.ts + WebviewTemplate.ts)**
-   - Receives state change messages
+3. **Bridge (ScrcpyViewProvider.ts)**
+   - Subscribes to AppStateManager state changes
+   - Sends `stateSnapshot` messages to the webview containing all device states
+
+4. **Frontend (main.ts + WebviewTemplate.ts)**
+   - Receives `stateSnapshot` messages with complete state
    - Updates tab UI with appropriate visual indicators
    - Applies CSS classes to show colors and animations
 
@@ -71,7 +75,7 @@ The connection status feature is implemented across three main layers:
 
 ### Code Components
 
-#### DeviceSession (DeviceManager.ts)
+#### DeviceSession (DeviceService.ts)
 
 ```typescript
 class DeviceSession {
@@ -79,15 +83,15 @@ class DeviceSession {
 
   async connect(): Promise<void> {
     this.connectionState = 'connecting';
-    this.connectionStateCallback(this.deviceId, 'connecting');
+    this.appState.updateDeviceConnectionState(this.deviceId, 'connecting');
 
     try {
       // ... connection logic ...
       this.connectionState = 'connected';
-      this.connectionStateCallback(this.deviceId, 'connected');
+      this.appState.updateDeviceConnectionState(this.deviceId, 'connected');
     } catch (error) {
       this.connectionState = 'disconnected';
-      this.connectionStateCallback(this.deviceId, 'disconnected');
+      this.appState.updateDeviceConnectionState(this.deviceId, 'disconnected');
       throw error;
     }
   }
@@ -96,14 +100,14 @@ class DeviceSession {
     // Retry loop for auto-reconnect
     while (this.retryCount < maxRetries && !this.isDisposed) {
       this.connectionState = 'reconnecting';
-      this.connectionStateCallback(this.deviceId, 'reconnecting');
+      this.appState.updateDeviceConnectionState(this.deviceId, 'reconnecting');
 
       // ... reconnect logic ...
     }
 
     // All retries exhausted
     this.connectionState = 'disconnected';
-    this.connectionStateCallback(this.deviceId, 'disconnected');
+    this.appState.updateDeviceConnectionState(this.deviceId, 'disconnected');
   }
 }
 ```
@@ -157,29 +161,32 @@ class DeviceSession {
 
 ### Message Protocol
 
-The extension communicates connection state changes via the following message:
+The extension communicates state changes via a single `stateSnapshot` message:
 
 ```typescript
 {
-  type: 'connectionStateChanged',
-  deviceId: string,
-  state: 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
+  type: 'stateSnapshot',
+  state: {
+    devices: [{
+      deviceId: string,
+      serial: string,
+      name: string,
+      model?: string,
+      connectionState: 'connecting' | 'connected' | 'disconnected' | 'reconnecting',
+      isActive: boolean,
+      videoDimensions?: { width: number, height: number },
+      videoCodec?: 'h264' | 'h265' | 'av1'
+    }],
+    activeDeviceId: string | null,
+    settings: { showStats: boolean, showExtendedStats: boolean, audioEnabled: boolean },
+    toolStatus: { adbAvailable: boolean, scrcpyAvailable: boolean },
+    statusMessage?: { type: 'loading' | 'error' | 'empty', text: string },
+    deviceInfo: Record<string, DeviceDetailedInfo>
+  }
 }
 ```
 
-The webview also receives the connection state in the `sessionList` message:
-
-```typescript
-{
-  type: 'sessionList',
-  sessions: [{
-    deviceId: string,
-    deviceInfo: { serial: string, name: string },
-    isActive: boolean,
-    connectionState: 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
-  }]
-}
-```
+This single message replaces the legacy `connectionStateChanged` and `sessionList` messages, providing a complete state snapshot on every change.
 
 ## User Experience
 
