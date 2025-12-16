@@ -206,7 +206,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
           type: 'videoFrame',
           deviceId,
-          data: Array.from(frameData),
+          data: frameData,
           isConfig,
           isKeyFrame,
           width,
@@ -222,7 +222,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
           type: 'audioFrame',
           deviceId,
-          data: Array.from(frameData),
+          data: frameData,
           isConfig,
         });
       },

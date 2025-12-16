@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { exec, spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { MockChildProcess, resetMocks as resetChildProcessMocks } from '../mocks/child_process';
 import { MockSocket, resetMocks as resetNetMocks } from '../mocks/net';
 
@@ -68,9 +68,10 @@ describe('ScrcpyConnection', () => {
 
   describe('connect', () => {
     it('should call status callback with connecting message', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -86,9 +87,10 @@ describe('ScrcpyConnection', () => {
     });
 
     it('should throw when no devices are found', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -102,9 +104,10 @@ describe('ScrcpyConnection', () => {
     });
 
     it('should throw when ADB is not installed', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -118,9 +121,10 @@ describe('ScrcpyConnection', () => {
     });
 
     it('should connect to first device when no target specified', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -136,9 +140,10 @@ describe('ScrcpyConnection', () => {
     });
 
     it('should connect to target device when specified', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -161,9 +166,10 @@ describe('ScrcpyConnection', () => {
     });
 
     it('should throw when target device is not found', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -499,6 +505,25 @@ describe('ScrcpyConnection', () => {
       expect(controlSocket.destroy).toHaveBeenCalled();
       expect(audioSocket.destroy).toHaveBeenCalled();
     });
+
+    it('should remove the scrcpy reverse for the active session', async () => {
+      const conn = connection as unknown as {
+        deviceSerial: string;
+        scid: string;
+      };
+
+      conn.deviceSerial = 'emulator-5554';
+      conn.scid = 'deadbeef';
+
+      await connection.disconnect();
+
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'reverse', '--remove', 'localabstract:scrcpy_deadbeef'],
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
   });
 
   describe('takeScreenshot', () => {
@@ -544,14 +569,15 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('adb') && cmd.includes('install')) {
+          if (args.includes('install')) {
             cb?.(null, 'Success\n', '');
           }
           return new MockChildProcess();
@@ -560,8 +586,10 @@ describe('ScrcpyConnection', () => {
 
       await connection.installApk('/path/to/app.apk');
 
-      expect(exec).toHaveBeenCalledWith(
-        expect.stringContaining('adb -s emulator-5554 install -r'),
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'install', '-r', '/path/to/app.apk'],
+        expect.any(Object),
         expect.any(Function)
       );
     });
@@ -574,9 +602,10 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -599,14 +628,15 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('adb') && cmd.includes('push')) {
+          if (args.includes('push')) {
             cb?.(null, '1 file pushed\n', '');
           }
           return new MockChildProcess();
@@ -615,8 +645,10 @@ describe('ScrcpyConnection', () => {
 
       await connection.pushFiles(['/path/to/file.txt']);
 
-      expect(exec).toHaveBeenCalledWith(
-        expect.stringContaining('adb -s emulator-5554 push'),
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'push', '/path/to/file.txt', '/sdcard/Download/'],
+        expect.any(Object),
         expect.any(Function)
       );
     });
@@ -629,9 +661,10 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -643,8 +676,10 @@ describe('ScrcpyConnection', () => {
 
       await connection.pushFiles(['/path/to/file.txt'], '/sdcard/Custom/');
 
-      expect(exec).toHaveBeenCalledWith(
-        expect.stringContaining('/sdcard/Custom/'),
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'push', '/path/to/file.txt', '/sdcard/Custom/'],
+        expect.any(Object),
         expect.any(Function)
       );
     });
@@ -944,14 +979,15 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('pm list packages')) {
+          if (args.includes('pm') && args.includes('list') && args.includes('packages')) {
             cb?.(null, 'package:com.example.app1\npackage:com.example.app2\n', '');
           }
           return new MockChildProcess();
@@ -960,8 +996,10 @@ describe('ScrcpyConnection', () => {
 
       const apps = await connection.getInstalledApps();
 
-      expect(exec).toHaveBeenCalledWith(
-        expect.stringContaining('pm list packages'),
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'shell', 'pm', 'list', 'packages'],
+        expect.any(Object),
         expect.any(Function)
       );
       expect(apps).toBeInstanceOf(Array);
@@ -975,9 +1013,10 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -989,7 +1028,12 @@ describe('ScrcpyConnection', () => {
 
       await connection.getInstalledApps(true);
 
-      expect(exec).toHaveBeenCalledWith(expect.stringContaining('-3'), expect.any(Function));
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'shell', 'pm', 'list', 'packages', '-3'],
+        expect.any(Object),
+        expect.any(Function)
+      );
     });
   });
 
@@ -1002,14 +1046,15 @@ describe('ScrcpyConnection', () => {
       conn.deviceSerial = 'emulator-5554';
       conn.isConnected = true;
 
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('dumpsys display')) {
+          if (args.includes('dumpsys') && args.includes('display')) {
             cb?.(
               null,
               'Display Devices:\n' +

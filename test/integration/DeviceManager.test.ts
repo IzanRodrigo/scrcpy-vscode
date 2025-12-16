@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { exec, spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { MockChildProcess, resetMocks as resetChildProcessMocks } from '../mocks/child_process';
 
 // Mock child_process module before importing DeviceManager
@@ -68,9 +68,10 @@ describe('DeviceManager', () => {
 
   describe('getAvailableDevices', () => {
     it('should parse single device from adb devices output', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -90,9 +91,10 @@ describe('DeviceManager', () => {
     });
 
     it('should parse multiple devices from adb devices output', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -118,9 +120,10 @@ describe('DeviceManager', () => {
     });
 
     it('should filter out mDNS devices', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -143,9 +146,10 @@ describe('DeviceManager', () => {
     });
 
     it('should return empty array when no devices connected', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -161,9 +165,10 @@ describe('DeviceManager', () => {
     });
 
     it('should return empty array when adb command fails', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -179,9 +184,10 @@ describe('DeviceManager', () => {
     });
 
     it('should skip offline and unauthorized devices', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -205,9 +211,10 @@ describe('DeviceManager', () => {
     });
 
     it('should handle device without model info', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -281,14 +288,15 @@ describe('DeviceManager', () => {
 
   describe('connectWifi', () => {
     it('should connect to device over WiFi', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('adb connect')) {
+          if (args[0] === 'connect') {
             cb?.(null, 'connected to 192.168.1.100:5555\n', '');
           }
           return new MockChildProcess();
@@ -297,19 +305,24 @@ describe('DeviceManager', () => {
 
       const result = await manager.connectWifi('192.168.1.100', 5555);
 
-      expect(exec).toHaveBeenCalledWith('adb connect 192.168.1.100:5555', expect.any(Function));
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['connect', '192.168.1.100:5555'],
+        expect.any(Function)
+      );
       expect(result.serial).toBe('192.168.1.100:5555');
     });
 
     it('should resolve when already connected', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('adb connect')) {
+          if (args[0] === 'connect') {
             cb?.(null, 'already connected to 192.168.1.100:5555\n', '');
           }
           return new MockChildProcess();
@@ -322,14 +335,15 @@ describe('DeviceManager', () => {
     });
 
     it('should reject on connection failure', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('adb connect')) {
+          if (args[0] === 'connect') {
             cb?.(null, 'failed to connect to 192.168.1.100:5555\n', '');
           }
           return new MockChildProcess();
@@ -342,14 +356,15 @@ describe('DeviceManager', () => {
 
   describe('disconnectWifi', () => {
     it('should disconnect WiFi device', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof _optionsOrCallback === 'function' ? _optionsOrCallback : callback;
-          if (cmd.includes('adb disconnect')) {
+          if (args[0] === 'disconnect') {
             cb?.(null, 'disconnected 192.168.1.100:5555\n', '');
           }
           return new MockChildProcess();
@@ -358,7 +373,11 @@ describe('DeviceManager', () => {
 
       await manager.disconnectWifi('192.168.1.100:5555');
 
-      expect(exec).toHaveBeenCalledWith('adb disconnect 192.168.1.100:5555', expect.any(Function));
+      expect(execFile).toHaveBeenCalledWith(
+        'adb',
+        ['disconnect', '192.168.1.100:5555'],
+        expect.any(Function)
+      );
     });
   });
 
@@ -396,9 +415,10 @@ describe('DeviceManager', () => {
       ['RZXYZ12345', false],
       ['adb-12345._adb-tls-connect._tcp', false],
     ])('should classify %s as WiFi device: %s', async (serial, isWifi) => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -425,9 +445,10 @@ describe('DeviceManager', () => {
       ['model:SM_G970F', 'SM G970F'],
       ['model:Galaxy_S21_Ultra', 'Galaxy S21 Ultra'],
     ])('should parse model info %s as "%s"', async (modelStr, expectedModel) => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -444,9 +465,10 @@ describe('DeviceManager', () => {
     });
 
     it('should handle devices with various states', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          _cmd: string,
+          _file: string,
+          _args: string[],
           _optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
@@ -605,20 +627,42 @@ describe('DeviceManager', () => {
       manager.stopDeviceMonitoring();
       vi.useRealTimers();
     });
+
+    it('should not restart track-devices after stopDeviceMonitoring', async () => {
+      vi.useFakeTimers();
+      const mockProcess1 = new MockChildProcess();
+      const mockProcess2 = new MockChildProcess();
+      vi.mocked(spawn).mockReturnValueOnce(mockProcess1).mockReturnValueOnce(mockProcess2);
+
+      await manager.startDeviceMonitoring();
+      expect(spawn).toHaveBeenCalledTimes(1);
+
+      // Simulate process dying (schedules restart)
+      mockProcess1.emit('close');
+
+      // Stop monitoring before the restart timer fires
+      manager.stopDeviceMonitoring();
+
+      await vi.advanceTimersByTimeAsync(1100);
+      expect(spawn).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
   });
 
   describe('storage size parsing', () => {
     it('should parse device storage info correctly', async () => {
-      vi.mocked(exec).mockImplementation(
+      vi.mocked(execFile).mockImplementation(
         (
-          cmd: string,
+          _file: string,
+          args: string[],
           optionsOrCallback?: unknown,
           callback?: (error: Error | null, stdout: string, stderr: string) => void
         ) => {
           const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
           const opts = typeof optionsOrCallback === 'object' ? optionsOrCallback : {};
 
-          if (cmd.includes('df /data') && opts) {
+          if (args.includes('shell') && args.includes('df') && args.includes('/data') && opts) {
             cb?.(
               null,
               'Filesystem  Size  Used  Avail  Use%  Mounted\n/dev/data  128G  64G  64G  50%  /data',

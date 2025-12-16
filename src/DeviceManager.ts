@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI, VideoCodecType } from './ScrcpyConnection';
-import { exec, execSync, spawn, ChildProcess } from 'child_process';
+import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
 
 /**
  * Device information
@@ -467,8 +467,10 @@ export class DeviceManager {
   private sessions = new Map<string, DeviceSession>();
   private activeDeviceId: string | null = null;
   private trackDevicesProcess: ChildProcess | null = null;
+  private trackDevicesRestartTimeout: NodeJS.Timeout | null = null;
   private knownDeviceSerials = new Set<string>();
   private isMonitoring = false;
+  private deviceListUpdateChain: Promise<void> = Promise.resolve();
   private deviceInfoCache = new Map<string, { info: DeviceDetailedInfo; timestamp: number }>();
   private deviceInfoRefreshInterval: NodeJS.Timeout | null = null;
   private static readonly INFO_CACHE_TTL = 30000; // 30 seconds
@@ -489,7 +491,7 @@ export class DeviceManager {
    */
   async getAvailableDevices(): Promise<DeviceInfo[]> {
     return new Promise((resolve) => {
-      exec('adb devices -l', (error, stdout) => {
+      execFile('adb', ['devices', '-l'], (error, stdout) => {
         if (error) {
           resolve([]);
           return;
@@ -525,9 +527,9 @@ export class DeviceManager {
    * Get detailed device information via ADB commands
    */
   async getDeviceInfo(serial: string): Promise<DeviceDetailedInfo> {
-    const execAdb = (command: string): Promise<string> => {
+    const execAdb = (args: string[]): Promise<string> => {
       return new Promise((resolve, reject) => {
-        exec(`adb -s ${serial} ${command}`, { timeout: 5000 }, (error, stdout, stderr) => {
+        execFile('adb', ['-s', serial, ...args], { timeout: 5000 }, (error, stdout, stderr) => {
           if (error) {
             reject(new Error(stderr || error.message));
           } else {
@@ -549,14 +551,14 @@ export class DeviceManager {
         resolutionInfo,
         ipInfo,
       ] = await Promise.all([
-        execAdb('shell getprop ro.product.model').catch(() => 'Unknown'),
-        execAdb('shell getprop ro.product.manufacturer').catch(() => 'Unknown'),
-        execAdb('shell getprop ro.build.version.release').catch(() => 'Unknown'),
-        execAdb('shell getprop ro.build.version.sdk').catch(() => '0'),
-        execAdb('shell dumpsys battery').catch(() => ''),
-        execAdb('shell df /data').catch(() => ''),
-        execAdb('shell wm size').catch(() => ''),
-        execAdb('shell ip route | grep wlan').catch(() => ''),
+        execAdb(['shell', 'getprop', 'ro.product.model']).catch(() => 'Unknown'),
+        execAdb(['shell', 'getprop', 'ro.product.manufacturer']).catch(() => 'Unknown'),
+        execAdb(['shell', 'getprop', 'ro.build.version.release']).catch(() => 'Unknown'),
+        execAdb(['shell', 'getprop', 'ro.build.version.sdk']).catch(() => '0'),
+        execAdb(['shell', 'dumpsys', 'battery']).catch(() => ''),
+        execAdb(['shell', 'df', '/data']).catch(() => ''),
+        execAdb(['shell', 'wm', 'size']).catch(() => ''),
+        execAdb(['shell', 'sh', '-c', 'ip route | grep wlan']).catch(() => ''),
       ]);
 
       // Parse battery info
@@ -784,7 +786,7 @@ export class DeviceManager {
     const address = `${ipAddress}:${port}`;
 
     return new Promise((resolve, reject) => {
-      exec(`adb connect ${address}`, (error, stdout, stderr) => {
+      execFile('adb', ['connect', address], (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
           return;
@@ -796,10 +798,14 @@ export class DeviceManager {
         if (output.includes('connected to') || output.includes('already connected')) {
           // Get device model name
           try {
-            const modelOutput = execSync(`adb -s ${address} shell getprop ro.product.model`, {
-              timeout: 5000,
-              encoding: 'utf8',
-            }).trim();
+            const modelOutput = execFileSync(
+              'adb',
+              ['-s', address, 'shell', 'getprop', 'ro.product.model'],
+              {
+                timeout: 5000,
+                encoding: 'utf8',
+              }
+            ).trim();
 
             resolve({
               serial: address,
@@ -847,7 +853,7 @@ export class DeviceManager {
    */
   async disconnectWifi(address: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      exec(`adb disconnect ${address}`, (error, stdout, stderr) => {
+      execFile('adb', ['disconnect', address], (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
           return;
@@ -1273,6 +1279,15 @@ export class DeviceManager {
    * Start the adb track-devices process
    */
   private startTrackDevices(): void {
+    if (!this.isMonitoring) {
+      return;
+    }
+
+    if (this.trackDevicesRestartTimeout) {
+      clearTimeout(this.trackDevicesRestartTimeout);
+      this.trackDevicesRestartTimeout = null;
+    }
+
     if (this.trackDevicesProcess) {
       this.trackDevicesProcess.kill();
     }
@@ -1303,7 +1318,7 @@ export class DeviceManager {
         buffer = buffer.substring(4 + length);
 
         // Process device list
-        this.handleDeviceListUpdate(deviceList);
+        this.enqueueDeviceListUpdate(deviceList);
       }
     });
 
@@ -1314,16 +1329,29 @@ export class DeviceManager {
     this.trackDevicesProcess.on('close', () => {
       // Restart if still monitoring (process died unexpectedly)
       if (this.isMonitoring) {
-        setTimeout(() => this.startTrackDevices(), 1000);
+        this.trackDevicesRestartTimeout = setTimeout(() => this.startTrackDevices(), 1000);
       }
     });
+  }
+
+  /**
+   * Ensure device list updates are processed sequentially to avoid races.
+   */
+  private enqueueDeviceListUpdate(deviceList: string): void {
+    this.deviceListUpdateChain = this.deviceListUpdateChain
+      .then(async () => {
+        await this.handleDeviceListUpdate(deviceList);
+      })
+      .catch((error) => {
+        console.error('Failed to handle device list update:', error);
+      });
   }
 
   /**
    * Handle device list update from track-devices
    */
   private async handleDeviceListUpdate(deviceList: string): Promise<void> {
-    if (!this.config.autoConnect) {
+    if (!this.isMonitoring || !this.config.autoConnect) {
       return;
     }
 
@@ -1354,6 +1382,9 @@ export class DeviceManager {
 
     // Find new USB devices and auto-connect
     for (const device of currentDevices) {
+      if (!this.isMonitoring) {
+        return;
+      }
       // Skip WiFi devices for auto-connect
       if (this.isWifiDevice(device.serial)) {
         continue;
@@ -1362,10 +1393,14 @@ export class DeviceManager {
       if (!this.knownDeviceSerials.has(device.serial) && !this.isDeviceConnected(device.serial)) {
         // Get device model name
         try {
-          const modelOutput = execSync(`adb -s ${device.serial} shell getprop ro.product.model`, {
-            timeout: 5000,
-            encoding: 'utf8',
-          }).trim();
+          const modelOutput = execFileSync(
+            'adb',
+            ['-s', device.serial, 'shell', 'getprop', 'ro.product.model'],
+            {
+              timeout: 5000,
+              encoding: 'utf8',
+            }
+          ).trim();
           device.name = modelOutput || device.serial;
           device.model = modelOutput || undefined;
         } catch {
@@ -1375,6 +1410,9 @@ export class DeviceManager {
         this.statusCallback('', vscode.l10n.t('Connecting to {0}...', device.name));
 
         try {
+          if (!this.isMonitoring) {
+            return;
+          }
           await this.addDevice(device);
           this.knownDeviceSerials.add(device.serial);
         } catch {
@@ -1396,6 +1434,10 @@ export class DeviceManager {
    */
   stopDeviceMonitoring(): void {
     this.isMonitoring = false;
+    if (this.trackDevicesRestartTimeout) {
+      clearTimeout(this.trackDevicesRestartTimeout);
+      this.trackDevicesRestartTimeout = null;
+    }
     if (this.trackDevicesProcess) {
       this.trackDevicesProcess.kill();
       this.trackDevicesProcess = null;

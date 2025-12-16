@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec, spawn, ChildProcess } from 'child_process';
+import { execFile, spawn, ChildProcess } from 'child_process';
 import { ScrcpyProtocol } from './ScrcpyProtocol';
 
 // Video codec type
@@ -81,6 +81,7 @@ export class ScrcpyConnection {
   private controlSocket: net.Socket | null = null;
   private audioSocket: net.Socket | null = null;
   private adbProcess: ChildProcess | null = null;
+  private pendingStartFail: ((err: Error) => void) | null = null;
   private deviceWidth = 0;
   private deviceHeight = 0;
   private isConnected = false;
@@ -95,6 +96,105 @@ export class ScrcpyConnection {
 
   // Detected video codec from stream
   private detectedCodec: VideoCodecType = 'h264';
+
+  /**
+   * Simple growable byte buffer with read/write cursors.
+   * Avoids per-chunk Buffer.concat by compacting/growing occasionally.
+   */
+  private static CursorBuffer = class {
+    private buf: Buffer;
+    private readPos = 0;
+    private writePos = 0;
+
+    constructor(initialCapacity = 64 * 1024) {
+      this.buf = Buffer.allocUnsafe(initialCapacity);
+    }
+
+    available(): number {
+      return this.writePos - this.readPos;
+    }
+
+    append(chunk: Buffer): void {
+      if (chunk.length === 0) {
+        return;
+      }
+      this.ensureWritable(chunk.length);
+      chunk.copy(this.buf, this.writePos);
+      this.writePos += chunk.length;
+    }
+
+    peekUInt32BE(relOffset = 0): number {
+      return this.buf.readUInt32BE(this.readPos + relOffset);
+    }
+
+    peekBigUInt64BE(relOffset = 0): bigint {
+      return this.buf.readBigUInt64BE(this.readPos + relOffset);
+    }
+
+    readUInt32BE(): number {
+      const v = this.buf.readUInt32BE(this.readPos);
+      this.readPos += 4;
+      this.maybeReset();
+      return v;
+    }
+
+    readBigUInt64BE(): bigint {
+      const v = this.buf.readBigUInt64BE(this.readPos);
+      this.readPos += 8;
+      this.maybeReset();
+      return v;
+    }
+
+    readBytes(length: number): Buffer {
+      const out = this.buf.subarray(this.readPos, this.readPos + length);
+      this.readPos += length;
+      this.maybeReset();
+      return out;
+    }
+
+    discard(length: number): void {
+      this.readPos += length;
+      this.maybeReset();
+    }
+
+    private ensureWritable(length: number): void {
+      const freeTail = this.buf.length - this.writePos;
+      if (freeTail >= length) {
+        return;
+      }
+
+      // Compact unread bytes to the front if it helps.
+      if (this.readPos > 0) {
+        this.buf.copy(this.buf, 0, this.readPos, this.writePos);
+        this.writePos -= this.readPos;
+        this.readPos = 0;
+      }
+
+      if (this.buf.length - this.writePos >= length) {
+        return;
+      }
+
+      // Grow buffer capacity (doubling).
+      const required = this.writePos + length;
+      let newCap = this.buf.length === 0 ? 1024 : this.buf.length;
+      while (newCap < required) {
+        newCap *= 2;
+      }
+
+      const next = Buffer.allocUnsafe(newCap);
+      if (this.writePos > 0) {
+        this.buf.copy(next, 0, 0, this.writePos);
+      }
+      this.buf = next;
+    }
+
+    private maybeReset(): void {
+      if (this.readPos === this.writePos) {
+        this.readPos = 0;
+        this.writePos = 0;
+      }
+    }
+  };
 
   constructor(
     private onVideoFrame: VideoFrameCallback,
@@ -142,7 +242,7 @@ export class ScrcpyConnection {
    */
   private getDeviceList(): Promise<string[]> {
     return new Promise((resolve, reject) => {
-      exec('adb devices', (error, stdout, _stderr) => {
+      execFile('adb', ['devices'], (error, stdout, _stderr) => {
         if (error) {
           reject(
             new Error(
@@ -193,23 +293,59 @@ export class ScrcpyConnection {
     const localPort = 27183 + Math.floor(Math.random() * 16);
 
     // Setup reverse port forwarding
-    await this.execAdb(`reverse localabstract:scrcpy_${this.scid} tcp:${localPort}`);
+    await this.execAdb(['reverse', `localabstract:scrcpy_${this.scid}`, `tcp:${localPort}`]);
 
     // Create local server to receive connections
     // The server connects separately for video and control sockets
     const server = net.createServer();
+    const safeCloseServer = () => {
+      try {
+        if (server.listening) {
+          server.close();
+        }
+      } catch {
+        // Ignore close errors
+      }
+    };
 
     // Number of sockets: video + control (+ audio if enabled)
     const expectedSockets = this.config.audio ? 3 : 2;
+    const sockets: net.Socket[] = [];
+    let settled = false;
+    let timeout: NodeJS.Timeout | null = null;
+    let failConnection: ((err: Error) => void) | null = null;
 
     const connectionPromise = new Promise<{
       videoSocket: net.Socket;
       controlSocket: net.Socket;
       audioSocket: net.Socket | null;
     }>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        server.close();
-        reject(
+      const fail = (err: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.pendingStartFail = null;
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = null;
+        }
+        for (const socket of sockets) {
+          try {
+            socket.destroy();
+          } catch {
+            // Ignore destroy errors
+          }
+        }
+        safeCloseServer();
+        reject(err);
+      };
+
+      failConnection = fail;
+      this.pendingStartFail = fail;
+
+      timeout = setTimeout(() => {
+        fail(
           new Error(
             vscode.l10n.t(
               'Timeout waiting for device connection. The server may have failed to start.'
@@ -218,13 +354,25 @@ export class ScrcpyConnection {
         );
       }, 15000);
 
-      const sockets: net.Socket[] = [];
-
       server.on('connection', (socket: net.Socket) => {
         sockets.push(socket);
         // We need 2 or 3 connections depending on audio
         if (sockets.length === expectedSockets) {
-          clearTimeout(timeout);
+          if (settled) {
+            // A late connection after failure; close it immediately
+            try {
+              socket.destroy();
+            } catch {
+              // Ignore destroy errors
+            }
+            return;
+          }
+          settled = true;
+          this.pendingStartFail = null;
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = null;
+          }
           // Order: video, audio (if enabled), control (control is always last)
           if (this.config.audio) {
             resolve({
@@ -239,8 +387,7 @@ export class ScrcpyConnection {
       });
 
       server.once('error', (err: Error) => {
-        clearTimeout(timeout);
-        reject(err);
+        fail(err);
       });
     });
 
@@ -318,10 +465,16 @@ export class ScrcpyConnection {
 
     this.adbProcess.on('error', (err: Error) => {
       console.error('Failed to start scrcpy server:', err);
+      if (failConnection) {
+        failConnection(new Error(vscode.l10n.t('Failed to start scrcpy server: {0}', err.message)));
+      }
     });
 
     this.adbProcess.on('exit', (code) => {
       console.log('scrcpy server exited with code:', code);
+      if (!this.isConnected && failConnection) {
+        failConnection(new Error(vscode.l10n.t('scrcpy server exited with code {0}', code ?? -1)));
+      }
       if (this.isConnected) {
         this.isConnected = false;
         // Report as error so reconnect button appears
@@ -338,7 +491,7 @@ export class ScrcpyConnection {
 
     try {
       const { videoSocket, controlSocket, audioSocket } = await connectionPromise;
-      server.close();
+      safeCloseServer();
 
       this.isConnected = true;
       this.controlSocket = controlSocket;
@@ -365,8 +518,16 @@ export class ScrcpyConnection {
 
       // Clipboard sync is now on-demand (paste/copy), no polling needed
     } catch (error) {
-      server.close();
+      safeCloseServer();
       this.adbProcess?.kill();
+      // Cleanup reverse port forwarding (avoid leaking reverse entries on failure)
+      if (this.scid) {
+        try {
+          await this.execAdb(['reverse', '--remove', `localabstract:scrcpy_${this.scid}`]);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
       throw error;
     }
   }
@@ -387,7 +548,7 @@ export class ScrcpyConnection {
   private async getScrcpyVersion(): Promise<string> {
     const scrcpyCmd = this.getScrcpyCommand();
     return new Promise((resolve, reject) => {
-      exec(`"${scrcpyCmd}" --version`, (error, stdout) => {
+      execFile(scrcpyCmd, ['--version'], (error, stdout) => {
         if (error) {
           reject(
             new Error(
@@ -451,19 +612,16 @@ export class ScrcpyConnection {
     }
 
     this.onStatus(vscode.l10n.t('Pushing scrcpy server to device...'));
-    await this.execAdb(`push "${serverPath}" /data/local/tmp/scrcpy-server.jar`);
+    await this.execAdb(['push', serverPath, '/data/local/tmp/scrcpy-server.jar']);
   }
 
   /**
-   * Execute ADB command
+   * Execute ADB command (argv-based, no shell quoting)
    */
-  private execAdb(command: string): Promise<string> {
+  private execAdb(args: string[], options?: { timeout?: number }): Promise<string> {
     return new Promise((resolve, reject) => {
-      const fullCommand = this.deviceSerial
-        ? `adb -s ${this.deviceSerial} ${command}`
-        : `adb ${command}`;
-
-      exec(fullCommand, (error, stdout, stderr) => {
+      const fullArgs = this.deviceSerial ? ['-s', this.deviceSerial, ...args] : args;
+      execFile('adb', fullArgs, { timeout: options?.timeout }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
         } else {
@@ -479,40 +637,39 @@ export class ScrcpyConnection {
   private handleScrcpyStream(socket: net.Socket): void {
     this.videoSocket = socket;
 
-    let buffer = Buffer.alloc(0);
+    const buffer = new ScrcpyConnection.CursorBuffer(256 * 1024);
     let headerReceived = false;
     let codecReceived = false;
 
     socket.on('data', (chunk: Buffer) => {
-      buffer = Buffer.concat([buffer, chunk]);
+      buffer.append(chunk);
 
       // Parse scrcpy protocol
-      while (buffer.length > 0) {
+      while (buffer.available() > 0) {
         if (!headerReceived) {
           // First, receive device name (64 bytes)
-          if (buffer.length < ScrcpyProtocol.DEVICE_NAME_LENGTH) {
+          if (buffer.available() < ScrcpyProtocol.DEVICE_NAME_LENGTH) {
             break;
           }
 
           const deviceName = buffer
-            .subarray(0, ScrcpyProtocol.DEVICE_NAME_LENGTH)
+            .readBytes(ScrcpyProtocol.DEVICE_NAME_LENGTH)
             .toString('utf8')
             .replace(/\0+$/, '');
           console.log('Device name:', deviceName);
-          buffer = buffer.subarray(ScrcpyProtocol.DEVICE_NAME_LENGTH);
           headerReceived = true;
           continue;
         }
 
         if (!codecReceived) {
           // Video codec metadata: codec_id (4) + width (4) + height (4) = 12 bytes
-          if (buffer.length < 12) {
+          if (buffer.available() < 12) {
             break;
           }
 
-          const codecId = buffer.readUInt32BE(0);
-          this.deviceWidth = buffer.readUInt32BE(4);
-          this.deviceHeight = buffer.readUInt32BE(8);
+          const codecId = buffer.readUInt32BE();
+          this.deviceWidth = buffer.readUInt32BE();
+          this.deviceHeight = buffer.readUInt32BE();
 
           // Determine codec type from codec ID
           if (codecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265) {
@@ -526,7 +683,6 @@ export class ScrcpyConnection {
           console.log(
             `Video: codec=0x${codecId.toString(16)} (${this.detectedCodec}), ${this.deviceWidth}x${this.deviceHeight}`
           );
-          buffer = buffer.subarray(12);
           codecReceived = true;
 
           // Notify webview of video dimensions and codec
@@ -546,15 +702,15 @@ export class ScrcpyConnection {
         // H.264 codec_id = 0x68323634 ("h264")
         // H.265 codec_id = 0x68323635 ("h265")
         // AV1 codec_id = 0x00617631 ("av1")
-        if (buffer.length >= 12) {
-          const possibleCodecId = buffer.readUInt32BE(0);
+        if (buffer.available() >= 12) {
+          const possibleCodecId = buffer.peekUInt32BE(0);
           if (
             possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H264 ||
             possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265 ||
             possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_AV1
           ) {
-            const newWidth = buffer.readUInt32BE(4);
-            const newHeight = buffer.readUInt32BE(8);
+            const newWidth = buffer.peekUInt32BE(4);
+            const newHeight = buffer.peekUInt32BE(8);
 
             // Sanity check dimensions
             if (newWidth > 0 && newWidth < 10000 && newHeight > 0 && newHeight < 10000) {
@@ -562,7 +718,7 @@ export class ScrcpyConnection {
                 this.deviceWidth = newWidth;
                 this.deviceHeight = newHeight;
                 console.log(`Video reconfigured: ${this.deviceWidth}x${this.deviceHeight}`);
-                buffer = buffer.subarray(12);
+                buffer.discard(12);
 
                 // Notify webview of new dimensions
                 this.onVideoFrame(
@@ -580,23 +736,25 @@ export class ScrcpyConnection {
         }
 
         // Video packets: pts_flags (8) + packet_size (4) + data
-        if (buffer.length < 12) {
+        if (buffer.available() < 12) {
           break;
         }
 
-        const ptsFlags = buffer.readBigUInt64BE(0);
-        const packetSize = buffer.readUInt32BE(8);
+        const ptsFlags = buffer.peekBigUInt64BE(0);
+        const packetSize = buffer.peekUInt32BE(8);
 
-        if (buffer.length < 12 + packetSize) {
+        if (buffer.available() < 12 + packetSize) {
           break;
         }
+
+        // Consume header
+        buffer.discard(12);
 
         const isConfig = (ptsFlags & (1n << 63n)) !== 0n;
         const isKeyFrame = (ptsFlags & (1n << 62n)) !== 0n;
         // const pts = ptsFlags & ((1n << 62n) - 1n);
 
-        const packetData = buffer.subarray(12, 12 + packetSize);
-        buffer = buffer.subarray(12 + packetSize);
+        const packetData = buffer.readBytes(packetSize);
 
         // Send to webview with codec info
         this.onVideoFrame(
@@ -634,23 +792,22 @@ export class ScrcpyConnection {
   private handleAudioStream(socket: net.Socket): void {
     this.audioSocket = socket;
 
-    let buffer = Buffer.alloc(0);
+    const buffer = new ScrcpyConnection.CursorBuffer(64 * 1024);
     let codecReceived = false;
 
     socket.on('data', (chunk: Buffer) => {
-      buffer = Buffer.concat([buffer, chunk]);
+      buffer.append(chunk);
 
       // Parse audio protocol
-      while (buffer.length > 0) {
+      while (buffer.available() > 0) {
         if (!codecReceived) {
           // Audio codec metadata: codec_id (4 bytes only)
-          if (buffer.length < 4) {
+          if (buffer.available() < 4) {
             break;
           }
 
-          const codecId = buffer.readUInt32BE(0);
+          const codecId = buffer.readUInt32BE();
           console.log(`Audio: codec=0x${codecId.toString(16)} (opus=0x6f707573)`);
-          buffer = buffer.subarray(4);
           codecReceived = true;
 
           // Notify webview to initialize audio decoder
@@ -661,20 +818,20 @@ export class ScrcpyConnection {
         }
 
         // Audio packets: pts_flags (8) + packet_size (4) + data
-        if (buffer.length < 12) {
+        if (buffer.available() < 12) {
           break;
         }
 
-        const ptsFlags = buffer.readBigUInt64BE(0);
-        const packetSize = buffer.readUInt32BE(8);
+        const ptsFlags = buffer.peekBigUInt64BE(0);
+        const packetSize = buffer.peekUInt32BE(8);
 
-        if (buffer.length < 12 + packetSize) {
+        if (buffer.available() < 12 + packetSize) {
           break;
         }
 
+        buffer.discard(12);
         const isConfig = (ptsFlags & (1n << 63n)) !== 0n;
-        const packetData = buffer.subarray(12, 12 + packetSize);
-        buffer = buffer.subarray(12 + packetSize);
+        const packetData = buffer.readBytes(packetSize);
 
         // Log first few audio packets for debugging
         this._audioPacketCount++;
@@ -1280,7 +1437,7 @@ export class ScrcpyConnection {
     if (!this.deviceSerial) {
       throw new Error(vscode.l10n.t('No device connected'));
     }
-    await this.execAdb(`install -r "${filePath}"`);
+    await this.execAdb(['install', '-r', filePath]);
   }
 
   /**
@@ -1293,8 +1450,7 @@ export class ScrcpyConnection {
     if (filePaths.length === 0) {
       return;
     }
-    const quotedPaths = filePaths.map((p) => `"${p}"`).join(' ');
-    await this.execAdb(`push ${quotedPaths} "${destPath}"`);
+    await this.execAdb(['push', ...filePaths, destPath]);
   }
 
   /**
@@ -1432,8 +1588,10 @@ export class ScrcpyConnection {
     }
 
     // List packages
-    const listCmd = thirdPartyOnly ? 'shell pm list packages -3' : 'shell pm list packages';
-    const packagesOutput = await this.execAdb(listCmd);
+    const listArgs = thirdPartyOnly
+      ? ['shell', 'pm', 'list', 'packages', '-3']
+      : ['shell', 'pm', 'list', 'packages'];
+    const packagesOutput = await this.execAdb(listArgs);
     const lines = packagesOutput.trim().split('\n');
     const apps: Array<{ packageName: string; label: string }> = [];
 
@@ -1468,7 +1626,7 @@ export class ScrcpyConnection {
     }
 
     try {
-      const output = await this.execAdb('shell dumpsys display');
+      const output = await this.execAdb(['shell', 'dumpsys', 'display']);
       const displays: Array<{ id: number; info: string }> = [];
 
       // Parse display info from dumpsys output
@@ -1535,6 +1693,15 @@ export class ScrcpyConnection {
   async disconnect(): Promise<void> {
     this.isConnected = false;
 
+    const scid = this.scid;
+
+    // Abort any pending startScrcpy() wait (closes server/sockets via the captured fail closure)
+    if (this.pendingStartFail) {
+      const fail = this.pendingStartFail;
+      this.pendingStartFail = null;
+      fail(new Error(vscode.l10n.t('Disconnected')));
+    }
+
     // Reset clipboard state
     this.lastHostClipboard = '';
     this.lastDeviceClipboard = '';
@@ -1566,9 +1733,9 @@ export class ScrcpyConnection {
     }
 
     // Cleanup reverse port forwarding
-    if (this.deviceSerial) {
+    if (this.deviceSerial && scid) {
       try {
-        await this.execAdb('reverse --remove-all');
+        await this.execAdb(['reverse', '--remove', `localabstract:scrcpy_${scid}`]);
       } catch {
         // Ignore cleanup errors
       }
