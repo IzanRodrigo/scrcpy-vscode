@@ -39,8 +39,41 @@ declare global {
       install: string;
       settings: string;
       missingDependency: string;
+      deviceSettings: string;
+      darkMode: string;
+      auto: string;
+      light: string;
+      dark: string;
+      navigationMode: string;
+      gestural: string;
+      threeButton: string;
+      twoButton: string;
+      talkback: string;
+      selectToSpeak: string;
+      fontSize: string;
+      displaySize: string;
+      showLayoutBounds: string;
+      loadingSettings: string;
+      small: string;
+      default: string;
+      large: string;
+      largest: string;
     };
   }
+}
+
+/**
+ * Device UI settings from extension
+ */
+interface DeviceUISettings {
+  darkMode: 'auto' | 'light' | 'dark';
+  navigationMode: 'gestural' | 'threebutton' | 'twobutton';
+  talkbackEnabled: boolean;
+  selectToSpeakEnabled: boolean;
+  fontScale: number;
+  displayDensity: number;
+  defaultDensity: number;
+  showLayoutBounds: boolean;
 }
 
 // Tool status tracking (derived from state snapshot)
@@ -162,6 +195,13 @@ let recordingIndicator: HTMLElement | null = null;
 let recordingTime: HTMLElement | null = null;
 let isPortrait = true;
 let currentScreenshotData: string | null = null;
+
+// Device settings popup
+let deviceSettingsOverlay: HTMLElement | null = null;
+let deviceSettingsContent: HTMLElement | null = null;
+let deviceSettingsBtn: HTMLElement | null = null;
+let currentDeviceSettings: DeviceUISettings | null = null;
+const pendingSettingChanges = new Set<string>();
 
 // Device info tooltip
 let deviceInfoTooltip: HTMLElement | null = null;
@@ -421,6 +461,38 @@ function initialize() {
     screenshotPreviewOverlay.addEventListener('click', (e) => {
       if (e.target === screenshotPreviewOverlay) {
         dismissScreenshotPreview();
+      }
+    });
+  }
+
+  // Device settings popup setup
+  deviceSettingsOverlay = document.getElementById('device-settings-overlay');
+  deviceSettingsContent = document.getElementById('device-settings-content');
+  deviceSettingsBtn = document.getElementById('device-settings-btn');
+
+  const deviceSettingsTitle = document.getElementById('device-settings-title');
+  if (deviceSettingsTitle) {
+    deviceSettingsTitle.textContent = window.l10n.deviceSettings;
+  }
+
+  if (deviceSettingsBtn) {
+    deviceSettingsBtn.addEventListener('click', () => {
+      openDeviceSettings();
+    });
+  }
+
+  const deviceSettingsClose = document.getElementById('device-settings-close');
+  if (deviceSettingsClose) {
+    deviceSettingsClose.addEventListener('click', () => {
+      closeDeviceSettings();
+    });
+  }
+
+  // Close device settings when clicking outside
+  if (deviceSettingsOverlay) {
+    deviceSettingsOverlay.addEventListener('click', (e) => {
+      if (e.target === deviceSettingsOverlay) {
+        closeDeviceSettings();
       }
     });
   }
@@ -839,6 +911,14 @@ function handleMessage(event: MessageEvent) {
 
     case 'screenshotPreview':
       handleScreenshotPreview(message);
+      break;
+
+    case 'deviceSettingsLoaded':
+      handleDeviceSettingsLoaded(message.settings);
+      break;
+
+    case 'deviceSettingApplied':
+      handleDeviceSettingApplied(message.setting, message.success, message.error);
       break;
   }
 }
@@ -1745,6 +1825,395 @@ function dismissScreenshotPreview() {
     screenshotPreviewOverlay.classList.remove('visible');
   }
   currentScreenshotData = null;
+}
+
+// ==================== Device Settings Popup ====================
+
+/**
+ * Open device settings popup
+ */
+function openDeviceSettings() {
+  if (!deviceSettingsOverlay || !deviceSettingsContent || !activeDeviceId) {
+    return;
+  }
+
+  // Show loading state using safe DOM methods
+  deviceSettingsContent.textContent = '';
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'device-settings-loading';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'spinner';
+  loadingDiv.appendChild(spinner);
+
+  const loadingText = document.createElement('span');
+  loadingText.className = 'device-settings-loading-text';
+  loadingText.textContent = window.l10n.loadingSettings;
+  loadingDiv.appendChild(loadingText);
+
+  deviceSettingsContent.appendChild(loadingDiv);
+
+  // Show overlay
+  deviceSettingsOverlay.classList.add('visible');
+
+  // Request settings from extension
+  vscode.postMessage({ type: 'openDeviceSettings' });
+}
+
+/**
+ * Close device settings popup
+ */
+function closeDeviceSettings() {
+  if (!deviceSettingsOverlay) {
+    return;
+  }
+
+  deviceSettingsOverlay.classList.remove('visible');
+  currentDeviceSettings = null;
+  pendingSettingChanges.clear();
+}
+
+/**
+ * Handle device settings loaded from extension
+ */
+function handleDeviceSettingsLoaded(settings: DeviceUISettings) {
+  if (!deviceSettingsContent) {
+    return;
+  }
+
+  currentDeviceSettings = settings;
+  renderDeviceSettingsForm(settings);
+}
+
+/**
+ * Handle device setting applied response
+ */
+function handleDeviceSettingApplied(setting: string, success: boolean, error?: string) {
+  pendingSettingChanges.delete(setting);
+
+  // Remove loading state from the control
+  const control = deviceSettingsContent?.querySelector(`[data-setting="${setting}"]`);
+  if (control) {
+    control.classList.remove('loading');
+  }
+
+  if (!success && error) {
+    console.error(`Failed to apply setting ${setting}: ${error}`);
+  }
+}
+
+/**
+ * Create a settings row element
+ */
+function createSettingsRow(label: string, controlElement: HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'settings-row';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'settings-row-label';
+  labelSpan.textContent = label;
+  row.appendChild(labelSpan);
+
+  row.appendChild(controlElement);
+  return row;
+}
+
+/**
+ * Create a segmented control
+ */
+function createSegmentedControl(
+  setting: string,
+  options: { value: string; label: string }[],
+  currentValue: string
+): HTMLElement {
+  const control = document.createElement('div');
+  control.className = 'segmented-control';
+  control.dataset.setting = setting;
+
+  options.forEach((option) => {
+    const btn = document.createElement('button');
+    btn.className = 'segment-btn';
+    if (option.value === currentValue) {
+      btn.classList.add('active');
+    }
+    btn.dataset.value = option.value;
+    btn.textContent = option.label;
+    control.appendChild(btn);
+  });
+
+  return control;
+}
+
+/**
+ * Create a toggle switch
+ */
+function createToggleSwitch(setting: string, isActive: boolean): HTMLElement {
+  const toggle = document.createElement('div');
+  toggle.className = 'toggle-switch';
+  if (isActive) {
+    toggle.classList.add('active');
+  }
+  toggle.dataset.setting = setting;
+  return toggle;
+}
+
+/**
+ * Create a slider control
+ */
+function createSliderControl(
+  setting: string,
+  min: number,
+  max: number,
+  step: number,
+  value: number,
+  displayValue: string
+): HTMLElement {
+  const control = document.createElement('div');
+  control.className = 'slider-control';
+  control.dataset.setting = setting;
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'settings-slider';
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+  slider.value = String(value);
+  control.appendChild(slider);
+
+  const valueSpan = document.createElement('span');
+  valueSpan.className = 'slider-value';
+  valueSpan.textContent = displayValue;
+  control.appendChild(valueSpan);
+
+  return control;
+}
+
+/**
+ * Get font scale display label
+ */
+function getFontScaleLabel(fontScale: number): string {
+  const fontScaleLabels: Record<string, string> = {
+    '0.85': window.l10n.small,
+    '1': window.l10n.default,
+    '1.15': window.l10n.large,
+    '1.3': window.l10n.largest,
+  };
+  return fontScaleLabels[fontScale.toString()] || `${Math.round(fontScale * 100)}%`;
+}
+
+/**
+ * Render device settings form using safe DOM methods
+ */
+function renderDeviceSettingsForm(settings: DeviceUISettings) {
+  if (!deviceSettingsContent) {
+    return;
+  }
+
+  // Clear content
+  deviceSettingsContent.textContent = '';
+
+  // Calculate display density percentage relative to default
+  const densityPercent =
+    settings.defaultDensity > 0
+      ? Math.round((settings.displayDensity / settings.defaultDensity) * 100)
+      : 100;
+
+  // Dark Mode
+  const darkModeControl = createSegmentedControl(
+    'darkMode',
+    [
+      { value: 'auto', label: window.l10n.auto },
+      { value: 'light', label: window.l10n.light },
+      { value: 'dark', label: window.l10n.dark },
+    ],
+    settings.darkMode
+  );
+  deviceSettingsContent.appendChild(createSettingsRow(window.l10n.darkMode, darkModeControl));
+
+  // Navigation Mode
+  const navModeControl = createSegmentedControl(
+    'navigationMode',
+    [
+      { value: 'gestural', label: window.l10n.gestural },
+      { value: 'threebutton', label: window.l10n.threeButton },
+      { value: 'twobutton', label: window.l10n.twoButton },
+    ],
+    settings.navigationMode
+  );
+  deviceSettingsContent.appendChild(createSettingsRow(window.l10n.navigationMode, navModeControl));
+
+  // TalkBack
+  const talkbackToggle = createToggleSwitch('talkbackEnabled', settings.talkbackEnabled);
+  deviceSettingsContent.appendChild(createSettingsRow(window.l10n.talkback, talkbackToggle));
+
+  // Select to Speak
+  const selectToSpeakToggle = createToggleSwitch(
+    'selectToSpeakEnabled',
+    settings.selectToSpeakEnabled
+  );
+  deviceSettingsContent.appendChild(
+    createSettingsRow(window.l10n.selectToSpeak, selectToSpeakToggle)
+  );
+
+  // Font Size
+  const fontScaleControl = createSliderControl(
+    'fontScale',
+    0.85,
+    1.3,
+    0.15,
+    settings.fontScale,
+    getFontScaleLabel(settings.fontScale)
+  );
+  deviceSettingsContent.appendChild(createSettingsRow(window.l10n.fontSize, fontScaleControl));
+
+  // Display Size
+  const displaySizeControl = createSliderControl(
+    'displayDensity',
+    80,
+    120,
+    5,
+    densityPercent,
+    `${densityPercent}%`
+  );
+  deviceSettingsContent.appendChild(createSettingsRow(window.l10n.displaySize, displaySizeControl));
+
+  // Show Layout Bounds
+  const layoutBoundsToggle = createToggleSwitch('showLayoutBounds', settings.showLayoutBounds);
+  deviceSettingsContent.appendChild(
+    createSettingsRow(window.l10n.showLayoutBounds, layoutBoundsToggle)
+  );
+
+  // Attach event handlers
+  attachSettingsEventHandlers();
+}
+
+/**
+ * Attach event handlers to settings controls
+ */
+function attachSettingsEventHandlers() {
+  if (!deviceSettingsContent) {
+    return;
+  }
+
+  // Segmented controls (dark mode, navigation mode)
+  const segmentedControls = deviceSettingsContent.querySelectorAll('.segmented-control');
+  segmentedControls.forEach((control) => {
+    const setting = (control as HTMLElement).dataset.setting;
+    const buttons = control.querySelectorAll('.segment-btn');
+
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (control.classList.contains('loading')) {
+          return;
+        }
+
+        const value = (btn as HTMLElement).dataset.value;
+        if (!setting || !value) {
+          return;
+        }
+
+        // Update UI immediately
+        buttons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Send to extension
+        applyDeviceSetting(setting, value, control as HTMLElement);
+      });
+    });
+  });
+
+  // Toggle switches
+  const toggleSwitches = deviceSettingsContent.querySelectorAll('.toggle-switch');
+  toggleSwitches.forEach((toggle) => {
+    const setting = (toggle as HTMLElement).dataset.setting;
+
+    toggle.addEventListener('click', () => {
+      if (toggle.classList.contains('loading')) {
+        return;
+      }
+
+      if (!setting) {
+        return;
+      }
+
+      // Toggle UI immediately
+      const newValue = !toggle.classList.contains('active');
+      toggle.classList.toggle('active', newValue);
+
+      // Send to extension
+      applyDeviceSetting(setting, newValue, toggle as HTMLElement);
+    });
+  });
+
+  // Sliders
+  const sliderControls = deviceSettingsContent.querySelectorAll('.slider-control');
+  sliderControls.forEach((control) => {
+    const setting = (control as HTMLElement).dataset.setting;
+    const slider = control.querySelector('.settings-slider') as HTMLInputElement;
+    const valueDisplay = control.querySelector('.slider-value') as HTMLElement;
+
+    if (!slider || !valueDisplay || !setting) {
+      return;
+    }
+
+    // Debounce slider changes
+    let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    slider.addEventListener('input', () => {
+      const value = parseFloat(slider.value);
+
+      // Update display immediately
+      if (setting === 'fontScale') {
+        valueDisplay.textContent = getFontScaleLabel(value);
+      } else if (setting === 'displayDensity') {
+        valueDisplay.textContent = `${value}%`;
+      }
+    });
+
+    slider.addEventListener('change', () => {
+      if (control.classList.contains('loading')) {
+        return;
+      }
+
+      // Debounce the change
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+
+      debounceTimeout = setTimeout(() => {
+        let value: number;
+
+        if (setting === 'fontScale') {
+          value = parseFloat(slider.value);
+        } else if (setting === 'displayDensity') {
+          // Convert percentage back to actual density
+          const percent = parseFloat(slider.value);
+          value = Math.round((percent / 100) * (currentDeviceSettings?.defaultDensity || 420));
+        } else {
+          value = parseFloat(slider.value);
+        }
+
+        applyDeviceSetting(setting, value, control as HTMLElement);
+      }, 100);
+    });
+  });
+}
+
+/**
+ * Apply a device setting
+ */
+function applyDeviceSetting(setting: string, value: unknown, control: HTMLElement) {
+  // Mark as pending and show loading state
+  pendingSettingChanges.add(setting);
+  control.classList.add('loading');
+
+  // Send to extension
+  vscode.postMessage({
+    type: 'applyDeviceSetting',
+    setting,
+    value,
+  });
 }
 
 // Initialize when DOM is ready

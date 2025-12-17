@@ -6,7 +6,7 @@ import { ScrcpyConfig } from './ScrcpyConnection';
 import { DeviceService } from './DeviceService';
 import { AppStateManager, Unsubscribe } from './AppStateManager';
 import { ToolCheckResult } from './ToolChecker';
-import { ToolNotFoundError, ToolErrorCode } from './types/AppState';
+import { ToolNotFoundError, ToolErrorCode, DeviceUISettings } from './types/AppState';
 
 export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'scrcpy.deviceView';
@@ -421,6 +421,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     data?: number[];
     mimeType?: string;
     duration?: number;
+    setting?: string;
+    value?: unknown;
   }) {
     switch (message.type) {
       case 'touch':
@@ -662,6 +664,49 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
               type: 'deviceInfo',
               serial: message.serial,
               info: null,
+            });
+          }
+        }
+        break;
+
+      case 'openDeviceSettings':
+        if (this._deviceService) {
+          try {
+            const settings = await this._deviceService.getDeviceUISettings();
+            this._view?.webview.postMessage({
+              type: 'deviceSettingsLoaded',
+              settings,
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(
+              vscode.l10n.t('Failed to load device settings: {0}', errorMessage)
+            );
+          }
+        }
+        break;
+
+      case 'applyDeviceSetting':
+        if (this._deviceService && message.setting && message.value !== undefined) {
+          try {
+            await this._deviceService.applyDeviceUISetting(
+              message.setting as keyof DeviceUISettings,
+              message.value as DeviceUISettings[keyof DeviceUISettings]
+            );
+            // Notify webview of success
+            this._view?.webview.postMessage({
+              type: 'deviceSettingApplied',
+              setting: message.setting,
+              success: true,
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            // Notify webview of failure
+            this._view?.webview.postMessage({
+              type: 'deviceSettingApplied',
+              setting: message.setting,
+              success: false,
+              error: errorMessage,
             });
           }
         }

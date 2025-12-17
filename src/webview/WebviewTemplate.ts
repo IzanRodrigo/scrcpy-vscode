@@ -23,6 +23,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
   const openNotificationPanel = vscode.l10n.t('Open notification panel');
   const openSettingsPanel = vscode.l10n.t('Open settings panel');
   const moreOptions = vscode.l10n.t('More options');
+  const deviceSettings = vscode.l10n.t('Device Settings');
 
   // Bundle of strings for dynamic updates in main.ts
   const l10n = {
@@ -48,6 +49,25 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     install: vscode.l10n.t('Install'),
     settings: vscode.l10n.t('Settings'),
     missingDependency: vscode.l10n.t('Missing dependency'),
+    deviceSettings: vscode.l10n.t('Device Settings'),
+    darkMode: vscode.l10n.t('Dark Mode'),
+    auto: vscode.l10n.t('Auto'),
+    light: vscode.l10n.t('Light'),
+    dark: vscode.l10n.t('Dark'),
+    navigationMode: vscode.l10n.t('Navigation'),
+    gestural: vscode.l10n.t('Gestures'),
+    threeButton: vscode.l10n.t('3-Button'),
+    twoButton: vscode.l10n.t('2-Button'),
+    talkback: vscode.l10n.t('TalkBack'),
+    selectToSpeak: vscode.l10n.t('Select to Speak'),
+    fontSize: vscode.l10n.t('Font Size'),
+    displaySize: vscode.l10n.t('Display Size'),
+    showLayoutBounds: vscode.l10n.t('Layout Bounds'),
+    loadingSettings: vscode.l10n.t('Loading settings...'),
+    small: vscode.l10n.t('Small'),
+    default: vscode.l10n.t('Default'),
+    large: vscode.l10n.t('Large'),
+    largest: vscode.l10n.t('Largest'),
   };
 
   return `<!DOCTYPE html>
@@ -770,6 +790,268 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     .reconnect-btn.primary:hover {
       background: var(--vscode-button-hoverBackground, #1177bb);
     }
+
+    /* Device settings popup overlay */
+    .device-settings-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+
+    .device-settings-overlay.visible {
+      display: flex;
+    }
+
+    .device-settings-container {
+      background: var(--vscode-editor-background, #1e1e1e);
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      position: relative;
+      min-width: 280px;
+      max-width: 90vw;
+      max-height: 85vh;
+      overflow: hidden;
+    }
+
+    .device-settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+    }
+
+    .device-settings-title {
+      font-family: var(--vscode-font-family);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--vscode-foreground, #ccc);
+    }
+
+    .device-settings-close {
+      background: transparent;
+      border: none;
+      color: var(--vscode-foreground, #ccc);
+      cursor: pointer;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      opacity: 0.7;
+      transition: opacity 0.1s, background 0.1s;
+    }
+
+    .device-settings-close:hover {
+      opacity: 1;
+      background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+    }
+
+    .device-settings-close svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .device-settings-content {
+      padding: 12px 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .device-settings-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      gap: 12px;
+    }
+
+    .device-settings-loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
+      border-top-color: var(--vscode-focusBorder, #0078d4);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .device-settings-loading-text {
+      font-family: var(--vscode-font-family);
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground, #999);
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.05));
+      gap: 12px;
+    }
+
+    .settings-row:last-child {
+      border-bottom: none;
+    }
+
+    .settings-row-label {
+      font-family: var(--vscode-font-family);
+      font-size: 12px;
+      color: var(--vscode-foreground, #ccc);
+      flex-shrink: 0;
+    }
+
+    .settings-row-control {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: var(--vscode-input-background, #3c3c3c);
+      border: 1px solid var(--vscode-input-border, #3c3c3c);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .toggle-switch.loading {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background: var(--vscode-foreground, #ccc);
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle-switch.active {
+      background: var(--vscode-button-background, #0078d4);
+      border-color: var(--vscode-button-background, #0078d4);
+    }
+
+    .toggle-switch.active::after {
+      transform: translateX(16px);
+      background: var(--vscode-button-foreground, white);
+    }
+
+    /* Segmented control */
+    .segmented-control {
+      display: flex;
+      background: var(--vscode-input-background, #3c3c3c);
+      border: 1px solid var(--vscode-input-border, #3c3c3c);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .segmented-control.loading {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .segment-btn {
+      padding: 4px 10px;
+      font-family: var(--vscode-font-family);
+      font-size: 11px;
+      background: transparent;
+      color: var(--vscode-foreground, #ccc);
+      border: none;
+      cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+    }
+
+    .segment-btn:not(:last-child) {
+      border-right: 1px solid var(--vscode-input-border, #3c3c3c);
+    }
+
+    .segment-btn:hover:not(.active) {
+      background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+    }
+
+    .segment-btn.active {
+      background: var(--vscode-button-background, #0078d4);
+      color: var(--vscode-button-foreground, white);
+    }
+
+    /* Slider with value */
+    .slider-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      max-width: 160px;
+    }
+
+    .slider-control.loading {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .settings-slider {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--vscode-input-background, #3c3c3c);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .settings-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--vscode-button-background, #0078d4);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    .settings-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+
+    .settings-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      background: var(--vscode-button-background, #0078d4);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .slider-value {
+      font-family: var(--vscode-font-family);
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #999);
+      min-width: 50px;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -861,7 +1143,23 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       </div>
       <div class="toolbar-group toolbar-right">
         <button class="control-btn" id="rotate-btn" title="${changeToLandscape}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9,1H3A2,2 0 0,0 1,3V16A2,2 0 0,0 3,18H9A2,2 0 0,0 11,16V3A2,2 0 0,0 9,1M9,15H3V3H9V15M21,13H13V15H21V21H9V20H6V21A2,2 0 0,0 8,23H21A2,2 0 0,0 23,21V15A2,2 0 0,0 21,13M23,10L19,8L20.91,7.09C19.74,4.31 17,2.5 14,2.5V1A9,9 0 0,1 23,10Z"/></svg></button>
+        <button class="control-btn" id="device-settings-btn" title="${deviceSettings}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10M10,22C9.75,22 9.54,21.82 9.5,21.58L9.13,18.93C8.5,18.68 7.96,18.34 7.44,17.94L4.95,18.95C4.73,19.03 4.46,18.95 4.34,18.73L2.34,15.27C2.21,15.05 2.27,14.78 2.46,14.63L4.57,12.97L4.5,12L4.57,11L2.46,9.37C2.27,9.22 2.21,8.95 2.34,8.73L4.34,5.27C4.46,5.05 4.73,4.96 4.95,5.05L7.44,6.05C7.96,5.66 8.5,5.32 9.13,5.07L9.5,2.42C9.54,2.18 9.75,2 10,2H14C14.25,2 14.46,2.18 14.5,2.42L14.87,5.07C15.5,5.32 16.04,5.66 16.56,6.05L19.05,5.05C19.27,4.96 19.54,5.05 19.66,5.27L21.66,8.73C21.79,8.95 21.73,9.22 21.54,9.37L19.43,11L19.5,12L19.43,13L21.54,14.63C21.73,14.78 21.79,15.05 21.66,15.27L19.66,18.73C19.54,18.95 19.27,19.04 19.05,18.95L16.56,17.94C16.04,18.34 15.5,18.68 14.87,18.93L14.5,21.58C14.46,21.82 14.25,22 14,22H10Z"/></svg></button>
         <button class="control-btn" data-keycode="26" title="${power}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16.56,5.44L15.11,6.89C16.84,7.94 18,9.83 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12C6,9.83 7.16,7.94 8.88,6.88L7.44,5.44C5.36,6.88 4,9.28 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12C20,9.28 18.64,6.88 16.56,5.44M13,3H11V13H13"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device Settings Popup Overlay -->
+  <div id="device-settings-overlay" class="device-settings-overlay">
+    <div class="device-settings-container">
+      <div class="device-settings-header">
+        <span class="device-settings-title" id="device-settings-title"></span>
+        <button id="device-settings-close" class="device-settings-close">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg>
+        </button>
+      </div>
+      <div class="device-settings-content" id="device-settings-content">
+        <!-- Settings content will be populated dynamically -->
       </div>
     </div>
   </div>

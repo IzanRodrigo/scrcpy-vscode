@@ -11,7 +11,15 @@ import * as path from 'path';
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI, VideoCodecType } from './ScrcpyConnection';
 import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
 import { AppStateManager } from './AppStateManager';
-import { DeviceInfo, DeviceDetailedInfo, ConnectionState, VideoCodec } from './types/AppState';
+import {
+  DeviceInfo,
+  DeviceDetailedInfo,
+  ConnectionState,
+  VideoCodec,
+  DeviceUISettings,
+  DarkMode,
+  NavigationMode,
+} from './types/AppState';
 
 // Re-export types for backward compatibility
 export type { DeviceInfo, DeviceDetailedInfo, ConnectionState };
@@ -1011,6 +1019,242 @@ export class DeviceService {
       throw new Error(vscode.l10n.t('No active device'));
     }
     return session.connection.listDisplays();
+  }
+
+  // ==================== Device UI Settings ====================
+
+  /**
+   * TalkBack service identifier
+   */
+  private static readonly TALKBACK_SERVICE =
+    'com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService';
+
+  /**
+   * Select to Speak service identifier
+   */
+  private static readonly SELECT_TO_SPEAK_SERVICE =
+    'com.google.android.marvin.talkback/com.google.android.accessibility.selecttospeak.SelectToSpeakService';
+
+  /**
+   * Get current device UI settings via ADB
+   */
+  async getDeviceUISettings(): Promise<DeviceUISettings> {
+    const session = this.getActiveSession();
+    if (!session?.connection) {
+      throw new Error(vscode.l10n.t('No active device'));
+    }
+
+    const serial = session.deviceInfo.serial;
+    const adbCmd = this.getAdbCommand();
+
+    const execAdb = (args: string[]): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        execFile(adbCmd, ['-s', serial, ...args], { timeout: 5000 }, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+          } else {
+            resolve(stdout.trim());
+          }
+        });
+      });
+    };
+
+    // Fetch all settings in parallel
+    const [
+      nightModeResult,
+      overlayResult,
+      accessibilityResult,
+      fontScaleResult,
+      densityResult,
+      layoutBoundsResult,
+    ] = await Promise.all([
+      execAdb(['shell', 'settings', 'get', 'secure', 'ui_night_mode']).catch(() => ''),
+      execAdb(['shell', 'cmd', 'overlay', 'list']).catch(() => ''),
+      execAdb(['shell', 'settings', 'get', 'secure', 'enabled_accessibility_services']).catch(
+        () => ''
+      ),
+      execAdb(['shell', 'settings', 'get', 'system', 'font_scale']).catch(() => '1.0'),
+      execAdb(['shell', 'wm', 'density']).catch(() => ''),
+      execAdb(['shell', 'getprop', 'debug.layout']).catch(() => ''),
+    ]);
+
+    // Parse dark mode (0=auto, 1=light, 2=dark)
+    let darkMode: DarkMode = 'auto';
+    const nightMode = parseInt(nightModeResult, 10);
+    if (nightMode === 1) {
+      darkMode = 'light';
+    } else if (nightMode === 2) {
+      darkMode = 'dark';
+    }
+
+    // Parse navigation mode from overlay list
+    let navigationMode: NavigationMode = 'threebutton';
+    if (overlayResult.includes('[x] com.android.internal.systemui.navbar.gestural')) {
+      navigationMode = 'gestural';
+    } else if (overlayResult.includes('[x] com.android.internal.systemui.navbar.twobutton')) {
+      navigationMode = 'twobutton';
+    }
+
+    // Parse accessibility services
+    const accessibilityServices = accessibilityResult.toLowerCase();
+    const talkbackEnabled = accessibilityServices.includes('talkback');
+    const selectToSpeakEnabled = accessibilityServices.includes('selecttospeak');
+
+    // Parse font scale
+    const fontScale = parseFloat(fontScaleResult) || 1.0;
+
+    // Parse display density
+    let displayDensity = 0;
+    let defaultDensity = 0;
+    const densityMatch = densityResult.match(/Physical density:\s*(\d+)/);
+    const overrideMatch = densityResult.match(/Override density:\s*(\d+)/);
+    if (densityMatch) {
+      defaultDensity = parseInt(densityMatch[1], 10);
+      displayDensity = overrideMatch ? parseInt(overrideMatch[1], 10) : defaultDensity;
+    }
+
+    // Parse layout bounds
+    const showLayoutBounds = layoutBoundsResult === 'true';
+
+    return {
+      darkMode,
+      navigationMode,
+      talkbackEnabled,
+      selectToSpeakEnabled,
+      fontScale,
+      displayDensity,
+      defaultDensity,
+      showLayoutBounds,
+    };
+  }
+
+  /**
+   * Apply a single device UI setting via ADB
+   */
+  async applyDeviceUISetting<K extends keyof DeviceUISettings>(
+    setting: K,
+    value: DeviceUISettings[K]
+  ): Promise<void> {
+    const session = this.getActiveSession();
+    if (!session?.connection) {
+      throw new Error(vscode.l10n.t('No active device'));
+    }
+
+    const serial = session.deviceInfo.serial;
+    const adbCmd = this.getAdbCommand();
+
+    const execAdb = (args: string[]): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        execFile(adbCmd, ['-s', serial, ...args], { timeout: 10000 }, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+          } else {
+            resolve(stdout.trim());
+          }
+        });
+      });
+    };
+
+    switch (setting) {
+      case 'darkMode': {
+        // 0=auto, 1=light, 2=dark
+        const modeValue = value === 'light' ? '1' : value === 'dark' ? '2' : '0';
+        await execAdb(['shell', 'settings', 'put', 'secure', 'ui_night_mode', modeValue]);
+        break;
+      }
+
+      case 'navigationMode': {
+        // First disable all navigation overlays, then enable the selected one
+        const overlays = [
+          'com.android.internal.systemui.navbar.gestural',
+          'com.android.internal.systemui.navbar.twobutton',
+          'com.android.internal.systemui.navbar.threebutton',
+        ];
+        for (const overlay of overlays) {
+          await execAdb(['shell', 'cmd', 'overlay', 'disable', overlay]).catch(() => {});
+        }
+        const targetOverlay =
+          value === 'gestural'
+            ? 'com.android.internal.systemui.navbar.gestural'
+            : value === 'twobutton'
+              ? 'com.android.internal.systemui.navbar.twobutton'
+              : 'com.android.internal.systemui.navbar.threebutton';
+        await execAdb(['shell', 'cmd', 'overlay', 'enable', targetOverlay]);
+        break;
+      }
+
+      case 'talkbackEnabled': {
+        const currentServices = await execAdb([
+          'shell',
+          'settings',
+          'get',
+          'secure',
+          'enabled_accessibility_services',
+        ]).catch(() => '');
+        const services = currentServices
+          .split(':')
+          .filter((s) => s && !s.toLowerCase().includes('talkback'));
+        if (value) {
+          services.push(DeviceService.TALKBACK_SERVICE);
+        }
+        const newServices = services.join(':') || 'null';
+        await execAdb([
+          'shell',
+          'settings',
+          'put',
+          'secure',
+          'enabled_accessibility_services',
+          newServices,
+        ]);
+        break;
+      }
+
+      case 'selectToSpeakEnabled': {
+        const currentServices = await execAdb([
+          'shell',
+          'settings',
+          'get',
+          'secure',
+          'enabled_accessibility_services',
+        ]).catch(() => '');
+        const services = currentServices
+          .split(':')
+          .filter((s) => s && !s.toLowerCase().includes('selecttospeak'));
+        if (value) {
+          services.push(DeviceService.SELECT_TO_SPEAK_SERVICE);
+        }
+        const newServices = services.join(':') || 'null';
+        await execAdb([
+          'shell',
+          'settings',
+          'put',
+          'secure',
+          'enabled_accessibility_services',
+          newServices,
+        ]);
+        break;
+      }
+
+      case 'fontScale': {
+        const scaleValue = String(value);
+        await execAdb(['shell', 'settings', 'put', 'system', 'font_scale', scaleValue]);
+        break;
+      }
+
+      case 'displayDensity': {
+        const densityValue = String(value);
+        await execAdb(['shell', 'wm', 'density', densityValue]);
+        break;
+      }
+
+      case 'showLayoutBounds': {
+        const boolValue = value ? 'true' : 'false';
+        await execAdb(['shell', 'setprop', 'debug.layout', boolValue]);
+        // Trigger UI refresh by broadcasting an intent
+        await execAdb(['shell', 'service', 'call', 'activity', '1599295570']).catch(() => {});
+        break;
+      }
+    }
   }
 
   // ==================== Session Management ====================
