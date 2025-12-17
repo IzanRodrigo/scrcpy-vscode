@@ -1837,21 +1837,18 @@ function openDeviceSettings() {
     return;
   }
 
-  // Show loading state using safe DOM methods
-  deviceSettingsContent.textContent = '';
-  const loadingDiv = document.createElement('div');
-  loadingDiv.className = 'device-settings-loading';
-
-  const spinner = document.createElement('div');
-  spinner.className = 'spinner';
-  loadingDiv.appendChild(spinner);
-
-  const loadingText = document.createElement('span');
-  loadingText.className = 'device-settings-loading-text';
-  loadingText.textContent = window.l10n.loadingSettings;
-  loadingDiv.appendChild(loadingText);
-
-  deviceSettingsContent.appendChild(loadingDiv);
+  // Render form immediately with default values and disabled state
+  const defaultSettings: DeviceUISettings = {
+    darkMode: 'auto',
+    navigationMode: 'gestural',
+    talkbackEnabled: false,
+    selectToSpeakEnabled: false,
+    fontScale: 1.0,
+    displayDensity: 400,
+    defaultDensity: 400,
+    showLayoutBounds: false,
+  };
+  renderDeviceSettingsForm(defaultSettings, true); // true = disabled
 
   // Show overlay
   deviceSettingsOverlay.classList.add('visible');
@@ -1882,7 +1879,7 @@ function handleDeviceSettingsLoaded(settings: DeviceUISettings) {
   }
 
   currentDeviceSettings = settings;
-  renderDeviceSettingsForm(settings);
+  renderDeviceSettingsForm(settings, false); // false = enabled
 }
 
 /**
@@ -1924,10 +1921,14 @@ function createSettingsRow(label: string, controlElement: HTMLElement): HTMLElem
 function createSegmentedControl(
   setting: string,
   options: { value: string; label: string }[],
-  currentValue: string
+  currentValue: string,
+  disabled: boolean
 ): HTMLElement {
   const control = document.createElement('div');
   control.className = 'segmented-control';
+  if (disabled) {
+    control.classList.add('disabled');
+  }
   control.dataset.setting = setting;
 
   options.forEach((option) => {
@@ -1938,6 +1939,7 @@ function createSegmentedControl(
     }
     btn.dataset.value = option.value;
     btn.textContent = option.label;
+    btn.disabled = disabled;
     control.appendChild(btn);
   });
 
@@ -1947,11 +1949,14 @@ function createSegmentedControl(
 /**
  * Create a toggle switch
  */
-function createToggleSwitch(setting: string, isActive: boolean): HTMLElement {
+function createToggleSwitch(setting: string, isActive: boolean, disabled: boolean): HTMLElement {
   const toggle = document.createElement('div');
   toggle.className = 'toggle-switch';
   if (isActive) {
     toggle.classList.add('active');
+  }
+  if (disabled) {
+    toggle.classList.add('disabled');
   }
   toggle.dataset.setting = setting;
   return toggle;
@@ -1966,10 +1971,14 @@ function createSliderControl(
   max: number,
   step: number,
   value: number,
-  displayValue: string
+  displayValue: string,
+  disabled: boolean
 ): HTMLElement {
   const control = document.createElement('div');
   control.className = 'slider-control';
+  if (disabled) {
+    control.classList.add('disabled');
+  }
   control.dataset.setting = setting;
 
   const slider = document.createElement('input');
@@ -1979,6 +1988,7 @@ function createSliderControl(
   slider.max = String(max);
   slider.step = String(step);
   slider.value = String(value);
+  slider.disabled = disabled;
   control.appendChild(slider);
 
   const valueSpan = document.createElement('span');
@@ -2005,7 +2015,7 @@ function getFontScaleLabel(fontScale: number): string {
 /**
  * Render device settings form using safe DOM methods
  */
-function renderDeviceSettingsForm(settings: DeviceUISettings) {
+function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean) {
   if (!deviceSettingsContent) {
     return;
   }
@@ -2027,7 +2037,8 @@ function renderDeviceSettingsForm(settings: DeviceUISettings) {
       { value: 'light', label: window.l10n.light },
       { value: 'dark', label: window.l10n.dark },
     ],
-    settings.darkMode
+    settings.darkMode,
+    disabled
   );
   deviceSettingsContent.appendChild(createSettingsRow(window.l10n.darkMode, darkModeControl));
 
@@ -2039,18 +2050,20 @@ function renderDeviceSettingsForm(settings: DeviceUISettings) {
       { value: 'threebutton', label: window.l10n.threeButton },
       { value: 'twobutton', label: window.l10n.twoButton },
     ],
-    settings.navigationMode
+    settings.navigationMode,
+    disabled
   );
   deviceSettingsContent.appendChild(createSettingsRow(window.l10n.navigationMode, navModeControl));
 
   // TalkBack
-  const talkbackToggle = createToggleSwitch('talkbackEnabled', settings.talkbackEnabled);
+  const talkbackToggle = createToggleSwitch('talkbackEnabled', settings.talkbackEnabled, disabled);
   deviceSettingsContent.appendChild(createSettingsRow(window.l10n.talkback, talkbackToggle));
 
   // Select to Speak
   const selectToSpeakToggle = createToggleSwitch(
     'selectToSpeakEnabled',
-    settings.selectToSpeakEnabled
+    settings.selectToSpeakEnabled,
+    disabled
   );
   deviceSettingsContent.appendChild(
     createSettingsRow(window.l10n.selectToSpeak, selectToSpeakToggle)
@@ -2063,7 +2076,8 @@ function renderDeviceSettingsForm(settings: DeviceUISettings) {
     1.3,
     0.15,
     settings.fontScale,
-    getFontScaleLabel(settings.fontScale)
+    getFontScaleLabel(settings.fontScale),
+    disabled
   );
   deviceSettingsContent.appendChild(createSettingsRow(window.l10n.fontSize, fontScaleControl));
 
@@ -2074,18 +2088,25 @@ function renderDeviceSettingsForm(settings: DeviceUISettings) {
     120,
     5,
     densityPercent,
-    `${densityPercent}%`
+    `${densityPercent}%`,
+    disabled
   );
   deviceSettingsContent.appendChild(createSettingsRow(window.l10n.displaySize, displaySizeControl));
 
   // Show Layout Bounds
-  const layoutBoundsToggle = createToggleSwitch('showLayoutBounds', settings.showLayoutBounds);
+  const layoutBoundsToggle = createToggleSwitch(
+    'showLayoutBounds',
+    settings.showLayoutBounds,
+    disabled
+  );
   deviceSettingsContent.appendChild(
     createSettingsRow(window.l10n.showLayoutBounds, layoutBoundsToggle)
   );
 
-  // Attach event handlers
-  attachSettingsEventHandlers();
+  // Attach event handlers (only if not disabled)
+  if (!disabled) {
+    attachSettingsEventHandlers();
+  }
 }
 
 /**

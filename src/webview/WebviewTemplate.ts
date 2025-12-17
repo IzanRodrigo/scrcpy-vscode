@@ -63,7 +63,6 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     fontSize: vscode.l10n.t('Font Size'),
     displaySize: vscode.l10n.t('Display Size'),
     showLayoutBounds: vscode.l10n.t('Layout Bounds'),
-    loadingSettings: vscode.l10n.t('Loading settings...'),
     small: vscode.l10n.t('Small'),
     default: vscode.l10n.t('Default'),
     large: vscode.l10n.t('Large'),
@@ -872,30 +871,6 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       flex: 1;
     }
 
-    .device-settings-loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 32px;
-      gap: 12px;
-    }
-
-    .device-settings-loading .spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
-      border-top-color: var(--vscode-focusBorder, #0078d4);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    .device-settings-loading-text {
-      font-family: var(--vscode-font-family);
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground, #999);
-    }
-
     .settings-row {
       display: flex;
       align-items: center;
@@ -936,7 +911,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       transition: background 0.2s, border-color 0.2s;
     }
 
-    .toggle-switch.loading {
+    .toggle-switch.loading,
+    .toggle-switch.disabled {
       opacity: 0.5;
       pointer-events: none;
     }
@@ -972,7 +948,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       overflow: hidden;
     }
 
-    .segmented-control.loading {
+    .segmented-control.loading,
+    .segmented-control.disabled {
       opacity: 0.5;
       pointer-events: none;
     }
@@ -1010,7 +987,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       max-width: 150px;
     }
 
-    .slider-control.loading {
+    .slider-control.loading,
+    .slider-control.disabled {
       opacity: 0.5;
       pointer-events: none;
     }
