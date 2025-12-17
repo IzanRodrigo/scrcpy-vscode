@@ -10,7 +10,7 @@
 2. WebDriverAgent (requires Apple Developer account and device signing)
 3. A companion iOS app on the device
 
-**Current State:** The scrcpy-vscode iOS implementation (Phase 7) is display-only, with all input methods returning no-ops.
+**Current State:** Phase 8 has implemented **optional WebDriverAgent integration** for iOS input control. When WDA is available and enabled, users can interact with iOS devices using touch, scroll, and keyboard input. Without WDA, the extension operates in display-only mode.
 
 ## Research Summary
 
@@ -161,44 +161,133 @@ iOS UI
 \*Only within app sandbox
 \*\*Simulators only, not real devices
 
-## Recommendation
+## Implementation Status
 
-### Short-Term (Phase 7 Complete)
+### Phase 8: WebDriverAgent Integration (Completed)
 
-Accept that iOS support is **display-only**. The current implementation correctly sets:
+Phase 8 implemented **optional WebDriverAgent support** with the following architecture:
 
-```typescript
-IOS_CAPABILITIES = {
-  supportsTouch: false,
-  supportsKeyboard: false,
-  supportsSystemButtons: false,
-  // ...
-};
+```
+Canvas (WebView)
+    ↓ pointer events
+InputHandler (normalized 0-1 coords)
+    ↓ postMessage
+ScrcpyViewProvider
+    ↓
+DeviceService.sendTouch()
+    ↓ (capability check)
+iOSConnection.sendTouch()
+    ↓ HTTP via WDAClient
+iproxy:8100 → USB → WebDriverAgent (device)
 ```
 
-### Medium-Term (Optional Phase 8)
+**Features implemented:**
 
-If input control is desired, implement **WebDriverAgent integration** with the following considerations:
+- Touch input (tap and swipe gestures)
+- Scroll/swipe via WDA touch chains
+- Text input via WDA keyboard API
+- Home/volume button presses
+- Dynamic capability updates based on WDA availability
+- Status feedback in device tooltip
 
-1. **User-driven setup:** User must have Xcode and sign WDA themselves
-2. **Opt-in feature:** Not enabled by default due to complexity
-3. **Documentation:** Extensive setup guide required
-4. **Compatibility warnings:** Clearly state iOS version/device limitations
+**Settings added:**
 
-**Estimated Implementation:**
+- `scrcpy.ios.webDriverAgentEnabled`: Enable/disable WDA (default: false)
+- `scrcpy.ios.webDriverAgentPort`: WDA port (default: 8100)
 
-- Detect if WDA is running on device (check port 8100)
-- Send WebDriver-compatible HTTP commands for tap/swipe/type
-- Handle coordinate mapping from canvas to device resolution
-- Add UI feedback for "WDA not detected" state
-
-### Long-Term (Future Consideration)
+### Future Considerations
 
 Monitor developments in:
 
 - [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) for new input capabilities
 - Apple's evolving developer tools
 - Alternative approaches from the iOS automation community
+
+## Setup Guide: WebDriverAgent
+
+### Prerequisites
+
+1. **macOS** with Xcode installed
+2. **Apple Developer Account** (free account works for personal devices)
+3. **iproxy** tool: `brew install libimobiledevice`
+4. **WebDriverAgent** built and deployed to device
+
+### Step 1: Install WebDriverAgent
+
+1. Clone WebDriverAgent:
+
+   ```bash
+   git clone https://github.com/appium/WebDriverAgent.git
+   cd WebDriverAgent
+   ```
+
+2. Open in Xcode:
+
+   ```bash
+   open WebDriverAgent.xcodeproj
+   ```
+
+3. Configure signing:
+   - Select the `WebDriverAgentRunner` target
+   - In "Signing & Capabilities", enable automatic signing
+   - Select your Apple Developer team
+   - Change the Bundle Identifier if needed (e.g., add your name)
+
+4. Build and run on your iOS device:
+   - Connect your iOS device via USB
+   - Select your device as the target
+   - Press ⌘+U to build and test (or Product → Test)
+   - First run may require trust: Settings → General → Device Management → Trust
+
+### Step 2: Verify WDA is Running
+
+After WDA starts, verify it's accessible:
+
+```bash
+# Start iproxy in a terminal (keep it running)
+iproxy 8100 8100 -u <your-device-UDID>
+
+# In another terminal, test the connection
+curl http://localhost:8100/status
+```
+
+You should see a JSON response with `"ready": true`.
+
+### Step 3: Enable in scrcpy-vscode
+
+1. Open VS Code Settings (⌘+,)
+2. Search for "scrcpy ios"
+3. Enable "WebDriver Agent Enabled"
+4. (Optional) Change the port if not using 8100
+
+### Troubleshooting
+
+**"WDA: iproxy not found"**
+
+- Install libimobiledevice: `brew install libimobiledevice`
+
+**"WDA: Connection failed, input disabled"**
+
+- Ensure WDA is running on the device (keep Xcode test running)
+- Ensure iproxy is running: `iproxy 8100 8100 -u <UDID>`
+- Check device trust: Settings → General → Device Management
+
+**"WDA: Input unavailable"**
+
+- WDA started but returned `ready: false`
+- Try restarting WDA from Xcode (⌘+U)
+
+**Input works but device shows "Automation Running" banner**
+
+- This is normal WDA behavior
+- The banner is required by Apple's XCUITest framework
+
+### Limitations
+
+- **iOS version:** Best support for iOS 16-18
+- **Device models:** iPhone 14 series and earlier (hardware security limitations on newer models)
+- **Certificate expiry:** Free developer accounts require rebuilding WDA every 7 days
+- **Automation banner:** Cannot be hidden (Apple requirement)
 
 ## Implementation Details (If WebDriverAgent Route Chosen)
 

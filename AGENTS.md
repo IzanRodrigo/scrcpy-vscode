@@ -6,7 +6,7 @@ For protocol details, architecture diagrams, and low-level implementation notes,
 
 ## Project Overview
 
-scrcpy-vscode is a VS Code extension that mirrors Android device screens directly in the editor. It uses the scrcpy server component running on the Android device and implements a custom client using WebCodecs for H.264 video decoding and Opus audio playback.
+scrcpy-vscode is a VS Code extension that mirrors Android and iOS device screens directly in the editor. For Android, it uses the scrcpy server component and implements a custom client using WebCodecs for H.264 video decoding and Opus audio playback. For iOS (macOS only), it uses CoreMediaIO/AVFoundation for screen capture and optionally WebDriverAgent for input control.
 
 ## Build Commands
 
@@ -125,8 +125,16 @@ src/
 ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar view
 ├── AppStateManager.ts    # Centralized state management (single source of truth)
 ├── DeviceService.ts      # Multi-device session management
-├── ScrcpyConnection.ts   # ADB communication, scrcpy protocol
-├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
+├── PlatformCapabilities.ts # Platform capability definitions (Android/iOS)
+├── IDeviceConnection.ts  # Device connection interface
+├── android/
+│   ├── ScrcpyConnection.ts # ADB communication, scrcpy protocol
+│   └── ScrcpyProtocol.ts   # Protocol constants and codec IDs
+├── ios/
+│   ├── iOSConnection.ts   # iOS device connection via CoreMediaIO
+│   ├── iOSDeviceManager.ts # iOS device discovery
+│   ├── WDAClient.ts       # WebDriverAgent HTTP client for input control
+│   └── index.ts           # iOS module exports
 ├── types/
 │   ├── AppState.ts       # State interfaces (DeviceState, AppStateSnapshot, etc.)
 │   └── WebviewActions.ts # Typed actions from webview to extension
@@ -337,6 +345,8 @@ test/
 │   ├── AppStateManager.test.ts # Centralized state management tests (100% coverage)
 │   ├── CodecUtils.test.ts      # Video codec detection and configuration tests
 │   ├── ScrcpyProtocol.test.ts  # Protocol constants tests
+│   ├── ios/
+│   │   └── WDAClient.test.ts   # WebDriverAgent client tests
 │   └── webview/
 │       ├── InputHandler.test.ts      # Pointer/scroll event tests
 │       ├── KeyboardHandler.test.ts   # Keyboard input tests
@@ -344,7 +354,8 @@ test/
 │       └── VideoRenderer.test.ts     # Video decoding and resize tests
 ├── integration/
 │   ├── DeviceService.test.ts   # Device discovery & WiFi tests
-│   └── ScrcpyConnection.test.ts # Connection & control tests
+│   ├── ScrcpyConnection.test.ts # Connection & control tests
+│   └── iOSConnection.test.ts   # iOS connection & WDA integration tests
 ├── mocks/
 │   ├── vscode.ts       # VS Code API mock
 │   ├── child_process.ts # spawn/exec mock
@@ -463,3 +474,23 @@ test/
     - Test mixed selection: select files and folders together
     - Verify files appear in `/sdcard/Download/` on device
     - Verify summary notification shows success/failure count
+20. Test iOS device connection (macOS only):
+    - Connect an iOS device via USB
+    - Verify the device appears in the device list with Apple icon
+    - Click to connect and verify video displays
+    - Verify the device tooltip shows iOS-specific info (model, iOS version)
+    - Disconnect the device and verify it's removed from the list
+21. Test iOS input with WebDriverAgent:
+    - Prerequisites:
+      - macOS with Xcode installed
+      - WebDriverAgent built and running on device (see docs/ios-input-control-research.md)
+      - iproxy running: `iproxy 8100 8100 -u <UDID>`
+    - Enable WDA in settings: `scrcpy.ios.webDriverAgentEnabled: true`
+    - Connect iOS device and verify WDA status in tooltip shows "Input enabled"
+    - Test tap: click on the device screen and verify tap registers
+    - Test swipe: drag across the screen and verify swipe gesture works
+    - Test scroll: use mouse wheel and verify scrolling works
+    - Test keyboard: click on text field, type text, verify it appears
+    - Test home button: press Home and verify device goes to home screen
+    - Disable WDA setting and verify tooltip shows "Input disabled"
+    - Test without WDA running: verify tooltip shows "Input unavailable" and display-only mode works
