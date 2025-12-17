@@ -11,8 +11,6 @@
 # Usage: ./scripts/setup-wda.sh
 #
 
-set -e
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -55,8 +53,11 @@ print_success() {
     echo -e "  ${GREEN}✔${NC} $1"
 }
 
-print_skip() {
-    echo -e "  ${CYAN}↷${NC} $1"
+wait_for_retry() {
+    echo ""
+    echo -e "  ${YELLOW}Press Enter to retry, or Ctrl+C to cancel...${NC}"
+    read -r
+    echo ""
 }
 
 check_macos() {
@@ -67,43 +68,80 @@ check_macos() {
 }
 
 check_xcode() {
-    print_step "Checking Xcode..."
+    while true; do
+        print_step "Checking Xcode..."
 
-    if ! command -v xcodebuild &> /dev/null; then
-        print_error "Xcode is not installed"
-        print_info "Please install Xcode from the App Store"
-        exit 1
-    fi
+        if ! command -v xcodebuild &> /dev/null; then
+            print_error "Xcode is not installed"
+            echo ""
+            print_info "How to fix:"
+            print_info "  1. Open the App Store"
+            print_info "  2. Search for 'Xcode'"
+            print_info "  3. Install Xcode (it's free)"
+            print_info "  4. Open Xcode once to accept the license"
+            wait_for_retry
+            continue
+        fi
 
-    if ! xcode-select -p &> /dev/null; then
-        print_warning "Xcode command line tools not configured"
-        print_info "Running: xcode-select --install"
-        xcode-select --install
-        exit 1
-    fi
+        if ! xcode-select -p &> /dev/null; then
+            print_warning "Xcode command line tools not configured"
+            print_info "Running: xcode-select --install"
+            xcode-select --install 2>/dev/null || true
+            echo ""
+            print_info "A dialog should appear. Click 'Install' and wait for completion."
+            wait_for_retry
+            continue
+        fi
 
-    local xcode_version
-    xcode_version=$(xcodebuild -version 2>/dev/null | head -n1)
-    print_success "$xcode_version"
+        local xcode_version
+        xcode_version=$(xcodebuild -version 2>/dev/null | head -n1)
+        print_success "$xcode_version"
+        break
+    done
+}
+
+check_homebrew() {
+    while true; do
+        if command -v brew &> /dev/null; then
+            return 0
+        fi
+
+        print_error "Homebrew is not installed"
+        echo ""
+        print_info "How to fix:"
+        print_info "  Run this command in Terminal:"
+        echo ""
+        echo -e "  ${BOLD}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"${NC}"
+        echo ""
+        print_info "  Or visit: https://brew.sh"
+        wait_for_retry
+    done
 }
 
 check_iproxy() {
-    print_step "Checking iproxy..."
+    while true; do
+        print_step "Checking iproxy..."
 
-    if ! command -v iproxy &> /dev/null; then
-        print_warning "iproxy not installed, installing..."
-
-        if ! command -v brew &> /dev/null; then
-            print_error "Homebrew is not installed"
-            print_info "Install from: https://brew.sh"
-            exit 1
+        if command -v iproxy &> /dev/null; then
+            print_success "iproxy available"
+            break
         fi
 
-        brew install libimobiledevice
-        print_success "iproxy installed"
-    else
-        print_success "iproxy available"
-    fi
+        print_warning "iproxy not installed"
+        check_homebrew
+
+        print_info "Installing libimobiledevice..."
+        if brew install libimobiledevice 2>/dev/null; then
+            print_success "iproxy installed"
+            break
+        else
+            print_error "Failed to install libimobiledevice"
+            echo ""
+            print_info "How to fix:"
+            print_info "  Try running manually: brew install libimobiledevice"
+            wait_for_retry
+        fi
+    done
 }
 
 build_ios_helper() {
@@ -127,69 +165,103 @@ build_ios_helper() {
 
     if [[ ! -d "$helper_dir" ]]; then
         print_error "ios-helper source not found at $helper_dir"
+        print_info "This is an internal error. Please reinstall the extension."
         exit 1
     fi
 
-    if ! command -v swift &> /dev/null; then
-        print_error "Swift is not installed (comes with Xcode)"
-        exit 1
-    fi
+    while true; do
+        if ! command -v swift &> /dev/null; then
+            print_error "Swift is not installed"
+            echo ""
+            print_info "Swift comes with Xcode. Please ensure Xcode is fully installed."
+            wait_for_retry
+            continue
+        fi
 
-    print_info "Building ios-helper..."
-    cd "$helper_dir"
+        print_info "Building ios-helper..."
+        cd "$helper_dir"
 
-    if swift build -c release > /dev/null 2>&1; then
-        print_success "ios-helper built"
-    else
-        print_error "Failed to build ios-helper"
-        exit 1
-    fi
+        if swift build -c release > /dev/null 2>&1; then
+            print_success "ios-helper built"
+            break
+        else
+            print_error "Failed to build ios-helper"
+            echo ""
+            print_info "How to fix:"
+            print_info "  1. Make sure Xcode is fully installed"
+            print_info "  2. Open Xcode and accept any license agreements"
+            print_info "  3. Try running: sudo xcode-select --reset"
+            wait_for_retry
+        fi
+    done
 }
 
 check_ios_device() {
-    print_step "Checking iOS device..."
+    while true; do
+        print_step "Checking iOS device..."
 
-    if ! command -v idevice_id &> /dev/null; then
-        print_error "idevice_id not found (part of libimobiledevice)"
-        exit 1
-    fi
+        if ! command -v idevice_id &> /dev/null; then
+            print_error "idevice_id not found"
+            print_info "This should have been installed with iproxy. Retrying..."
+            wait_for_retry
+            continue
+        fi
 
-    local devices
-    devices=$(idevice_id -l 2>/dev/null || true)
+        local devices
+        devices=$(idevice_id -l 2>/dev/null || true)
 
-    if [[ -z "$devices" ]]; then
-        print_error "No iOS device found"
-        print_info "Connect your iOS device via USB and trust the computer"
-        exit 1
-    fi
+        if [[ -z "$devices" ]]; then
+            print_error "No iOS device found"
+            echo ""
+            print_info "How to fix:"
+            print_info "  1. Connect your iOS device via USB cable"
+            print_info "  2. Unlock your device"
+            print_info "  3. If prompted, tap 'Trust' on your device"
+            print_info "  4. If still not working, try a different USB cable/port"
+            wait_for_retry
+            continue
+        fi
 
-    DEVICE_UDID=$(echo "$devices" | head -n1)
-    DEVICE_NAME=$(ideviceinfo -u "$DEVICE_UDID" -k DeviceName 2>/dev/null || echo "iOS Device")
-    local ios_version
-    ios_version=$(ideviceinfo -u "$DEVICE_UDID" -k ProductVersion 2>/dev/null || echo "?")
+        DEVICE_UDID=$(echo "$devices" | head -n1)
+        DEVICE_NAME=$(ideviceinfo -u "$DEVICE_UDID" -k DeviceName 2>/dev/null || echo "iOS Device")
+        local ios_version
+        ios_version=$(ideviceinfo -u "$DEVICE_UDID" -k ProductVersion 2>/dev/null || echo "?")
 
-    print_success "$DEVICE_NAME (iOS $ios_version)"
+        print_success "$DEVICE_NAME (iOS $ios_version)"
+        break
+    done
 }
 
 setup_wda_repo() {
-    print_step "Checking WebDriverAgent..."
+    while true; do
+        print_step "Checking WebDriverAgent..."
 
-    if [[ -d "$WDA_DIR" ]]; then
-        print_success "WDA repository ready"
-    else
+        if [[ -d "$WDA_DIR" ]]; then
+            print_success "WDA repository ready"
+            break
+        fi
+
         print_info "Cloning WebDriverAgent..."
         mkdir -p "$(dirname "$WDA_DIR")"
-        git clone --depth 1 "$WDA_REPO" "$WDA_DIR" 2>/dev/null
-        print_success "WDA cloned"
-        NEEDS_FIRST_TIME_SETUP=true
-    fi
+
+        if git clone --depth 1 "$WDA_REPO" "$WDA_DIR" 2>/dev/null; then
+            print_success "WDA cloned"
+            NEEDS_FIRST_TIME_SETUP=true
+            break
+        else
+            print_error "Failed to clone WebDriverAgent"
+            echo ""
+            print_info "How to fix:"
+            print_info "  1. Check your internet connection"
+            print_info "  2. Try: git clone $WDA_REPO"
+            wait_for_retry
+        fi
+    done
 }
 
 check_wda_built() {
     print_step "Checking WDA build status..."
 
-    # Check if we can run test-without-building successfully
-    # This is a quick check - if it fails immediately, WDA isn't built
     cd "$WDA_DIR"
 
     # Look for build products in DerivedData
@@ -197,7 +269,6 @@ check_wda_built() {
     local wda_build_found=false
 
     if [[ -d "$derived_data" ]]; then
-        # Check if any WDA build exists
         if find "$derived_data" -name "WebDriverAgentRunner-Runner.app" -type d 2>/dev/null | head -1 | grep -q .; then
             wda_build_found=true
         fi
@@ -218,7 +289,7 @@ configure_signing() {
     echo ""
     print_warning "First-time setup: You need to configure code signing in Xcode."
     print_info "This requires an Apple ID (free account works)."
-    print_warning "Free accounts expire after 7 days - you'll need to re-run this script."
+    print_warning "Free accounts expire after 7 days - just re-run this script when it expires."
     echo ""
 
     print_info "Opening Xcode project..."
@@ -228,9 +299,10 @@ configure_signing() {
     echo -e "${BOLD}In Xcode, configure these TWO targets:${NC}"
     echo ""
     echo "  ${BOLD}1. WebDriverAgentRunner${NC}"
-    echo "     • Select target in sidebar → Signing & Capabilities"
-    echo "     • Enable 'Automatically manage signing'"
-    echo "     • Select your Team (Apple ID)"
+    echo "     • Select target in left sidebar"
+    echo "     • Click 'Signing & Capabilities' tab"
+    echo "     • Check 'Automatically manage signing'"
+    echo "     • Select your Team (add Apple ID if needed)"
     echo "     • If bundle ID error: change to com.YOURNAME.WebDriverAgentRunner"
     echo ""
     echo "  ${BOLD}2. IntegrationApp${NC}"
@@ -241,105 +313,150 @@ configure_signing() {
 }
 
 build_wda() {
-    print_step "Building WebDriverAgent..."
+    while true; do
+        print_step "Building WebDriverAgent..."
 
-    cd "$WDA_DIR"
+        cd "$WDA_DIR"
 
-    print_info "This may take a minute..."
-    echo ""
+        print_info "This may take a minute..."
+        echo ""
 
-    local build_log
-    build_log=$(mktemp)
+        local build_log
+        build_log=$(mktemp)
 
-    if xcodebuild build-for-testing \
-        -project WebDriverAgent.xcodeproj \
-        -scheme WebDriverAgentRunner \
-        -destination "id=$DEVICE_UDID" \
-        -allowProvisioningUpdates 2>&1 | tee "$build_log"; then
+        if xcodebuild build-for-testing \
+            -project WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination "id=$DEVICE_UDID" \
+            -allowProvisioningUpdates 2>&1 | tee "$build_log"; then
 
-        if grep -q "BUILD SUCCEEDED" "$build_log"; then
-            print_success "WDA built successfully"
-            rm -f "$build_log"
-            return 0
+            if grep -q "BUILD SUCCEEDED" "$build_log"; then
+                print_success "WDA built successfully"
+                rm -f "$build_log"
+                break
+            fi
         fi
-    fi
 
-    echo ""
-    print_error "Build failed!"
+        echo ""
+        print_error "Build failed!"
+        echo ""
 
-    if grep -q "Signing for\|code signing" "$build_log"; then
-        print_warning "Code signing error - please check Xcode signing configuration"
-    fi
+        # Provide specific help based on error
+        if grep -q "Signing for\|code signing\|provisioning profile" "$build_log"; then
+            print_info "How to fix (Code Signing Error):"
+            print_info "  1. Open Xcode (it should still be open)"
+            print_info "  2. Select 'WebDriverAgentRunner' target"
+            print_info "  3. Go to 'Signing & Capabilities'"
+            print_info "  4. Enable 'Automatically manage signing'"
+            print_info "  5. Select your Team (Apple ID)"
+            print_info "  6. If bundle ID error: change to something unique"
+            print_info "  7. Do the same for 'IntegrationApp' target"
+        elif grep -q "device is locked" "$build_log"; then
+            print_info "How to fix:"
+            print_info "  Unlock your iOS device and try again"
+        elif grep -q "Device is not available" "$build_log"; then
+            print_info "How to fix:"
+            print_info "  1. Disconnect and reconnect your iOS device"
+            print_info "  2. Trust the computer on your device if prompted"
+        else
+            print_info "Check the build output above for details."
+            print_info "Common fixes:"
+            print_info "  - Ensure Xcode signing is configured for both targets"
+            print_info "  - Unlock your iOS device"
+            print_info "  - Trust the computer on your device"
+        fi
 
-    if grep -q "device is locked" "$build_log"; then
-        print_warning "Device is locked - please unlock and try again"
-    fi
+        rm -f "$build_log"
+        wait_for_retry
 
-    rm -f "$build_log"
-    exit 1
+        # Re-check device in case it was disconnected
+        check_ios_device
+    done
 }
 
 start_wda() {
-    print_step "Starting WebDriverAgent..."
+    while true; do
+        print_step "Starting WebDriverAgent..."
 
-    cd "$WDA_DIR"
+        cd "$WDA_DIR"
 
-    # Kill any existing sessions
-    pkill -f "iproxy.*8100" 2>/dev/null || true
-    pkill -f "xcodebuild.*WebDriverAgent" 2>/dev/null || true
-    sleep 1
+        # Kill any existing sessions
+        pkill -f "iproxy.*8100" 2>/dev/null || true
+        pkill -f "xcodebuild.*WebDriverAgent" 2>/dev/null || true
+        sleep 1
 
-    # Start xcodebuild
-    xcodebuild test-without-building \
-        -project WebDriverAgent.xcodeproj \
-        -scheme WebDriverAgentRunner \
-        -destination "id=$DEVICE_UDID" \
-        > /dev/null 2>&1 &
+        # Start xcodebuild
+        xcodebuild test-without-building \
+            -project WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination "id=$DEVICE_UDID" \
+            > /dev/null 2>&1 &
 
-    XCODE_PID=$!
-    sleep 5
+        XCODE_PID=$!
+        sleep 5
 
-    # Start iproxy
-    iproxy 8100 8100 -u "$DEVICE_UDID" > /dev/null 2>&1 &
-    IPROXY_PID=$!
-    sleep 2
+        # Check if xcodebuild is still running
+        if ! kill -0 $XCODE_PID 2>/dev/null; then
+            print_error "WebDriverAgent failed to start"
+            echo ""
+            print_info "How to fix:"
+            print_info "  1. Unlock your iOS device"
+            print_info "  2. If you see an 'Untrusted Developer' alert on device:"
+            print_info "     Go to Settings > General > VPN & Device Management"
+            print_info "     Tap your developer account and tap 'Trust'"
+            print_info "  3. The WDA app icon should appear on your device"
+            wait_for_retry
+            check_ios_device
+            continue
+        fi
 
-    # Cleanup handler
-    cleanup() {
-        echo ""
-        print_info "Stopping WebDriverAgent..."
-        kill $XCODE_PID $IPROXY_PID 2>/dev/null
-        pkill -f "iproxy.*8100" 2>/dev/null
-        pkill -f "xcodebuild.*WebDriverAgent" 2>/dev/null
-        exit 0
-    }
-    trap cleanup INT TERM
+        # Start iproxy
+        iproxy 8100 8100 -u "$DEVICE_UDID" > /dev/null 2>&1 &
+        IPROXY_PID=$!
+        sleep 2
 
-    # Verify connection
-    if curl -s http://localhost:8100/status | grep -q "ready"; then
-        print_success "WebDriverAgent running at http://localhost:8100"
-        echo ""
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${BOLD}  ✓ Ready! Touch input is now available in VS Code${NC}"
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        print_info "Keep this terminal open. Press Ctrl+C to stop."
-        echo ""
-        wait $XCODE_PID 2>/dev/null
-    else
-        print_error "Failed to connect to WebDriverAgent"
-        print_info "You may need to trust the developer on your device:"
-        print_info "Settings > General > VPN & Device Management"
-        kill $XCODE_PID $IPROXY_PID 2>/dev/null
-        exit 1
-    fi
+        # Cleanup handler
+        cleanup() {
+            echo ""
+            print_info "Stopping WebDriverAgent..."
+            kill $XCODE_PID $IPROXY_PID 2>/dev/null
+            pkill -f "iproxy.*8100" 2>/dev/null
+            pkill -f "xcodebuild.*WebDriverAgent" 2>/dev/null
+            exit 0
+        }
+        trap cleanup INT TERM
+
+        # Verify connection
+        if curl -s http://localhost:8100/status | grep -q "ready"; then
+            print_success "WebDriverAgent running at http://localhost:8100"
+            echo ""
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${BOLD}  ✓ Ready! Touch input is now available in VS Code${NC}"
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            print_info "Keep this terminal open. Press Ctrl+C to stop."
+            echo ""
+            wait $XCODE_PID 2>/dev/null
+            break
+        else
+            print_error "Failed to connect to WebDriverAgent"
+            kill $XCODE_PID $IPROXY_PID 2>/dev/null
+            echo ""
+            print_info "How to fix:"
+            print_info "  1. Check your iOS device - you may need to trust the developer"
+            print_info "     Go to: Settings > General > VPN & Device Management"
+            print_info "  2. Make sure the WDA app launched on your device"
+            print_info "  3. Try disconnecting and reconnecting your device"
+            wait_for_retry
+            check_ios_device
+        fi
+    done
 }
 
 # Main
 main() {
     print_header "WebDriverAgent for scrcpy-vscode"
 
-    # Always run these checks
     check_macos
     check_xcode
     check_iproxy
@@ -347,13 +464,11 @@ main() {
     check_ios_device
     setup_wda_repo
 
-    # Check if WDA is built, build if needed
     if ! check_wda_built; then
         configure_signing
         build_wda
     fi
 
-    # Start WDA
     start_wda
 }
 
