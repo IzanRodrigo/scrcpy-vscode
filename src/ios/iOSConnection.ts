@@ -463,23 +463,24 @@ export class iOSConnection implements IDeviceConnection {
     // Try production path first (bundled with extension)
     const prodPath = path.join(extensionPath, 'ios-helper');
 
-    // Development path
-    const devPath = path.join(
-      extensionPath,
-      '..',
-      'native',
-      'ios-helper',
-      '.build',
-      'release',
-      'ios-helper'
-    );
-
     // Check if running in development by looking for node_modules at project root
     const projectRoot = path.join(extensionPath, '..');
     const isDevMode = fs.existsSync(path.join(projectRoot, 'node_modules'));
 
-    if (isDevMode && fs.existsSync(devPath)) {
-      return devPath;
+    if (isDevMode) {
+      // Development paths - Swift uses architecture-specific directories
+      const buildDir = path.join(projectRoot, 'native', 'ios-helper', '.build');
+      const possiblePaths = [
+        path.join(buildDir, 'arm64-apple-macosx', 'release', 'ios-helper'),
+        path.join(buildDir, 'x86_64-apple-macosx', 'release', 'ios-helper'),
+        path.join(buildDir, 'release', 'ios-helper'),
+      ];
+
+      for (const devPath of possiblePaths) {
+        if (fs.existsSync(devPath)) {
+          return devPath;
+        }
+      }
     }
 
     return prodPath;
