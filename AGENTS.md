@@ -492,5 +492,14 @@ test/
     - Test scroll: use mouse wheel and verify scrolling works
     - Test keyboard: click on text field, type text, verify it appears
     - Test home button: press Home and verify device goes to home screen
+    - Test volume buttons: click volume up/down and verify volume changes
     - Disable WDA setting and verify tooltip shows "Input disabled"
     - Test without WDA running: verify tooltip shows "Input unavailable" and display-only mode works
+22. Test iOS screenshots:
+    - Connect iOS device via USB (macOS only)
+    - Click screenshot button (📷) in toolbar
+    - Verify loading spinner appears while capturing
+    - Verify screenshot preview modal appears with PNG image
+    - Test save button to save screenshot to disk
+    - Test copy button to copy screenshot to clipboard
+    - Verify PNG has device's original resolution

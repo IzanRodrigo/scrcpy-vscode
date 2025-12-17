@@ -5,6 +5,43 @@ All notable changes to the "Scrcpy for VS Code" extension will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - iOS Support (feature/ios branch)
+
+### Added
+
+- **iOS device support (macOS only)** - Mirror iOS device screens directly in VS Code
+  - Uses CoreMediaIO/AVFoundation for native screen capture via Swift helper binary
+  - Automatic device discovery and connection
+  - H.264 video streaming with hardware decoding
+  - Platform-aware UI showing Apple icon for iOS devices
+- **WebDriverAgent integration** - Optional touch/keyboard input for iOS devices
+  - Tap, swipe, and scroll gestures via WDA HTTP API
+  - Keyboard text input support
+  - Home button and volume control buttons
+  - iproxy USB port forwarding for WDA connection
+  - WDA status indicator in device tooltip (connected/connecting/unavailable/disabled)
+- **iOS screenshots** - Native screenshot capture via ios-helper binary
+  - Uses AVFoundation single-frame capture
+  - Outputs lossless PNG at device resolution
+- **Platform abstraction layer** - `IDeviceConnection` interface for cross-platform support
+  - `PlatformCapabilities` defines per-platform feature availability
+  - Dynamic capability updates based on WDA connection status
+- **iOS-specific settings**
+  - `scrcpy.ios.webDriverAgentEnabled` - Enable/disable WDA input control
+  - `scrcpy.ios.webDriverAgentPort` - WDA port (default: 8100)
+
+### Changed
+
+- Refactored `DeviceService` to support multiple connection types (Android/iOS)
+- Platform-neutral status messages and error handling
+- Control buttons now respect platform capabilities (volume buttons shown only when supported)
+
+### Documentation
+
+- Added iOS input control research documentation
+- Added WebDriverAgent setup guide with troubleshooting
+- Updated AGENTS.md with iOS architecture and manual testing instructions
+
 ## [0.1.2] - 2025-12-16
 
 ### Added
