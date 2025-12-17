@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # WebDriverAgent Setup Script for scrcpy-vscode
-# This script helps you install WebDriverAgent on your iOS device for touch/keyboard input control.
+# This script automatically sets up and starts WebDriverAgent for iOS touch/keyboard input.
 #
 # Requirements:
 #   - macOS with Xcode installed
@@ -25,6 +25,7 @@ BOLD='\033[1m'
 # Configuration
 WDA_DIR="$HOME/.scrcpy-vscode/WebDriverAgent"
 WDA_REPO="https://github.com/appium/WebDriverAgent.git"
+NEEDS_FIRST_TIME_SETUP=false
 
 print_header() {
     echo ""
@@ -54,6 +55,10 @@ print_success() {
     echo -e "  ${GREEN}✔${NC} $1"
 }
 
+print_skip() {
+    echo -e "  ${CYAN}↷${NC} $1"
+}
+
 check_macos() {
     if [[ "$(uname)" != "Darwin" ]]; then
         print_error "This script only runs on macOS"
@@ -62,7 +67,7 @@ check_macos() {
 }
 
 check_xcode() {
-    print_step "Checking Xcode installation..."
+    print_step "Checking Xcode..."
 
     if ! command -v xcodebuild &> /dev/null; then
         print_error "Xcode is not installed"
@@ -70,7 +75,6 @@ check_xcode() {
         exit 1
     fi
 
-    # Check if Xcode command line tools are installed
     if ! xcode-select -p &> /dev/null; then
         print_warning "Xcode command line tools not configured"
         print_info "Running: xcode-select --install"
@@ -79,16 +83,15 @@ check_xcode() {
     fi
 
     local xcode_version
-    xcode_version=$(xcodebuild -version | head -n1)
-    print_success "Found: $xcode_version"
+    xcode_version=$(xcodebuild -version 2>/dev/null | head -n1)
+    print_success "$xcode_version"
 }
 
 check_iproxy() {
-    print_step "Checking iproxy (libimobiledevice)..."
+    print_step "Checking iproxy..."
 
     if ! command -v iproxy &> /dev/null; then
-        print_warning "iproxy is not installed"
-        print_info "Installing via Homebrew..."
+        print_warning "iproxy not installed, installing..."
 
         if ! command -v brew &> /dev/null; then
             print_error "Homebrew is not installed"
@@ -99,14 +102,13 @@ check_iproxy() {
         brew install libimobiledevice
         print_success "iproxy installed"
     else
-        print_success "iproxy is installed"
+        print_success "iproxy available"
     fi
 }
 
 build_ios_helper() {
-    print_step "Checking ios-helper binary..."
+    print_step "Checking ios-helper..."
 
-    # Get script directory and project root
     local script_dir
     script_dir="$(cd "$(dirname "$0")" && pwd)"
     local project_root
@@ -115,27 +117,19 @@ build_ios_helper() {
     local build_dir="$helper_dir/.build"
 
     # Check if already built
-    local helper_path=""
     for arch in "arm64-apple-macosx" "x86_64-apple-macosx" ""; do
         local check_path="$build_dir/${arch:+$arch/}release/ios-helper"
         if [[ -f "$check_path" ]]; then
-            helper_path="$check_path"
-            break
+            print_success "ios-helper ready"
+            return 0
         fi
     done
 
-    if [[ -n "$helper_path" ]]; then
-        print_success "ios-helper already built"
-        return 0
-    fi
-
-    # Check if source exists
     if [[ ! -d "$helper_dir" ]]; then
         print_error "ios-helper source not found at $helper_dir"
         exit 1
     fi
 
-    # Check for Swift
     if ! command -v swift &> /dev/null; then
         print_error "Swift is not installed (comes with Xcode)"
         exit 1
@@ -144,8 +138,8 @@ build_ios_helper() {
     print_info "Building ios-helper..."
     cd "$helper_dir"
 
-    if swift build -c release; then
-        print_success "ios-helper built successfully"
+    if swift build -c release > /dev/null 2>&1; then
+        print_success "ios-helper built"
     else
         print_error "Failed to build ios-helper"
         exit 1
@@ -153,7 +147,7 @@ build_ios_helper() {
 }
 
 check_ios_device() {
-    print_step "Checking for connected iOS devices..."
+    print_step "Checking iOS device..."
 
     if ! command -v idevice_id &> /dev/null; then
         print_error "idevice_id not found (part of libimobiledevice)"
@@ -165,66 +159,56 @@ check_ios_device() {
 
     if [[ -z "$devices" ]]; then
         print_error "No iOS device found"
-        print_info "Please connect your iOS device via USB"
-        print_info "Make sure to trust the computer on your device"
+        print_info "Connect your iOS device via USB and trust the computer"
         exit 1
     fi
 
-    echo ""
-    print_info "Found device(s):"
-    while IFS= read -r udid; do
-        local name
-        name=$(ideviceinfo -u "$udid" -k DeviceName 2>/dev/null || echo "Unknown")
-        local ios_version
-        ios_version=$(ideviceinfo -u "$udid" -k ProductVersion 2>/dev/null || echo "Unknown")
-        echo -e "    ${BOLD}$name${NC} (iOS $ios_version)"
-        echo -e "    UDID: $udid"
-    done <<< "$devices"
-
-    # Use first device
     DEVICE_UDID=$(echo "$devices" | head -n1)
     DEVICE_NAME=$(ideviceinfo -u "$DEVICE_UDID" -k DeviceName 2>/dev/null || echo "iOS Device")
+    local ios_version
+    ios_version=$(ideviceinfo -u "$DEVICE_UDID" -k ProductVersion 2>/dev/null || echo "?")
 
-    print_success "Will use: $DEVICE_NAME"
+    print_success "$DEVICE_NAME (iOS $ios_version)"
 }
 
-check_developer_mode() {
-    print_step "Checking Developer Mode..."
+setup_wda_repo() {
+    print_step "Checking WebDriverAgent..."
 
-    local ios_version
-    ios_version=$(ideviceinfo -u "$DEVICE_UDID" -k ProductVersion 2>/dev/null || echo "0")
-    local major_version
-    major_version=$(echo "$ios_version" | cut -d. -f1)
-
-    if [[ "$major_version" -ge 16 ]]; then
-        print_warning "iOS 16+ requires Developer Mode to be enabled"
-        print_info "Go to: Settings > Privacy & Security > Developer Mode"
-        print_info "Enable Developer Mode and restart your device"
-        echo ""
-        read -p "Press Enter once Developer Mode is enabled, or Ctrl+C to cancel..."
+    if [[ -d "$WDA_DIR" ]]; then
+        print_success "WDA repository ready"
     else
-        print_success "iOS $ios_version (Developer Mode not required)"
+        print_info "Cloning WebDriverAgent..."
+        mkdir -p "$(dirname "$WDA_DIR")"
+        git clone --depth 1 "$WDA_REPO" "$WDA_DIR" 2>/dev/null
+        print_success "WDA cloned"
+        NEEDS_FIRST_TIME_SETUP=true
     fi
 }
 
-clone_wda() {
-    print_step "Setting up WebDriverAgent..."
+check_wda_built() {
+    print_step "Checking WDA build status..."
 
-    if [[ -d "$WDA_DIR" ]]; then
-        print_info "WebDriverAgent already exists at $WDA_DIR"
-        read -p "Update to latest version? [y/N] " -n 1 -r
-        echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Updating WebDriverAgent..."
-            cd "$WDA_DIR"
-            git pull
-            print_success "Updated to latest version"
+    # Check if we can run test-without-building successfully
+    # This is a quick check - if it fails immediately, WDA isn't built
+    cd "$WDA_DIR"
+
+    # Look for build products in DerivedData
+    local derived_data="$HOME/Library/Developer/Xcode/DerivedData"
+    local wda_build_found=false
+
+    if [[ -d "$derived_data" ]]; then
+        # Check if any WDA build exists
+        if find "$derived_data" -name "WebDriverAgentRunner-Runner.app" -type d 2>/dev/null | head -1 | grep -q .; then
+            wda_build_found=true
         fi
+    fi
+
+    if $wda_build_found && ! $NEEDS_FIRST_TIME_SETUP; then
+        print_success "WDA already built"
+        return 0
     else
-        print_info "Cloning WebDriverAgent repository..."
-        mkdir -p "$(dirname "$WDA_DIR")"
-        git clone "$WDA_REPO" "$WDA_DIR"
-        print_success "WebDriverAgent cloned to $WDA_DIR"
+        print_info "WDA needs to be built"
+        return 1
     fi
 }
 
@@ -232,42 +216,38 @@ configure_signing() {
     print_step "Configuring code signing..."
 
     echo ""
-    print_info "You need to configure code signing in Xcode."
+    print_warning "First-time setup: You need to configure code signing in Xcode."
     print_info "This requires an Apple ID (free account works)."
-    echo ""
-    print_warning "Free accounts have a 7-day expiration. You'll need to reinstall WDA after it expires."
+    print_warning "Free accounts expire after 7 days - you'll need to re-run this script."
     echo ""
 
     print_info "Opening Xcode project..."
     open "$WDA_DIR/WebDriverAgent.xcodeproj"
 
     echo ""
-    echo -e "${BOLD}Please follow these steps in Xcode:${NC}"
+    echo -e "${BOLD}In Xcode, configure these TWO targets:${NC}"
     echo ""
-    echo "  1. Select 'WebDriverAgentRunner' target in the left sidebar"
-    echo "  2. Go to 'Signing & Capabilities' tab"
-    echo "  3. Check 'Automatically manage signing'"
-    echo "  4. Select your Team (add your Apple ID if needed)"
-    echo "  5. If you see a bundle ID error, change it to something unique"
-    echo "     Example: com.yourname.WebDriverAgentRunner"
+    echo "  ${BOLD}1. WebDriverAgentRunner${NC}"
+    echo "     • Select target in sidebar → Signing & Capabilities"
+    echo "     • Enable 'Automatically manage signing'"
+    echo "     • Select your Team (Apple ID)"
+    echo "     • If bundle ID error: change to com.YOURNAME.WebDriverAgentRunner"
     echo ""
-    echo "  6. Also configure signing for 'IntegrationApp' target"
-    echo "     (same steps as above)"
+    echo "  ${BOLD}2. IntegrationApp${NC}"
+    echo "     • Same steps as above"
     echo ""
 
-    read -p "Press Enter once signing is configured, or Ctrl+C to cancel..."
+    read -p "Press Enter once BOTH targets are configured..."
 }
 
 build_wda() {
-    print_step "Building WebDriverAgent for $DEVICE_NAME..."
+    print_step "Building WebDriverAgent..."
 
     cd "$WDA_DIR"
 
-    print_info "This may take a few minutes..."
-    print_info "If prompted, unlock your device and trust the developer certificate"
+    print_info "This may take a minute..."
     echo ""
 
-    # Build for testing - capture output and exit code
     local build_log
     build_log=$(mktemp)
 
@@ -277,118 +257,39 @@ build_wda() {
         -destination "id=$DEVICE_UDID" \
         -allowProvisioningUpdates 2>&1 | tee "$build_log"; then
 
-        # Check if build actually succeeded (xcodebuild can return 0 even with errors)
         if grep -q "BUILD SUCCEEDED" "$build_log"; then
-            print_success "WebDriverAgent built successfully!"
+            print_success "WDA built successfully"
             rm -f "$build_log"
-        else
-            print_error "Build completed but may have issues. Check output above."
-            rm -f "$build_log"
-            exit 1
+            return 0
         fi
-    else
-        echo ""
-        print_error "Build failed!"
-        echo ""
-
-        # Check for common errors and provide guidance
-        if grep -q "code signing identity" "$build_log" || grep -q "Signing for" "$build_log"; then
-            print_warning "Code signing error detected."
-            echo ""
-            echo -e "${BOLD}Please ensure in Xcode:${NC}"
-            echo "  1. Select 'WebDriverAgentRunner' target"
-            echo "  2. Go to 'Signing & Capabilities' tab"
-            echo "  3. Check 'Automatically manage signing'"
-            echo "  4. Select a valid Team (your Apple ID)"
-            echo "  5. If bundle ID conflicts, change it to something unique"
-            echo "     e.g., com.yourname.WebDriverAgentRunner"
-            echo ""
-            echo "  Also do the same for 'IntegrationApp' target!"
-        fi
-
-        if grep -q "device is locked" "$build_log"; then
-            print_warning "Device is locked. Please unlock your iPhone and try again."
-        fi
-
-        rm -f "$build_log"
-        exit 1
     fi
-}
 
-test_wda() {
-    print_step "Installing and launching WebDriverAgent on device..."
-
-    cd "$WDA_DIR"
-
-    print_info "Starting WebDriverAgent test runner..."
-    print_warning "Keep this terminal open while using WDA"
     echo ""
+    print_error "Build failed!"
 
-    # Start xcodebuild test in background
-    xcodebuild test-without-building \
-        -project WebDriverAgent.xcodeproj \
-        -scheme WebDriverAgentRunner \
-        -destination "id=$DEVICE_UDID" \
-        -allowProvisioningUpdates &
-
-    XCODE_PID=$!
-
-    # Wait for WDA to start
-    sleep 5
-
-    # Start iproxy
-    print_info "Starting USB tunnel (iproxy)..."
-    iproxy 8100 8100 -u "$DEVICE_UDID" &
-    IPROXY_PID=$!
-
-    sleep 2
-
-    # Test connection
-    print_step "Testing WDA connection..."
-    if curl -s http://localhost:8100/status | grep -q "ready"; then
-        print_success "WebDriverAgent is running and accessible!"
-        echo ""
-        print_info "WDA is ready. You can now enable it in VS Code:"
-        print_info "Settings > scrcpy > iOS: Web Driver Agent Enabled"
-        echo ""
-        print_warning "Keep this terminal open to maintain the connection"
-        print_info "Press Ctrl+C to stop WDA"
-
-        # Wait for user to stop
-        trap "kill $XCODE_PID $IPROXY_PID 2>/dev/null; exit 0" INT TERM
-        wait $XCODE_PID
-    else
-        print_error "Could not connect to WebDriverAgent"
-        print_info "Check your device - you may need to trust the developer"
-        print_info "Go to: Settings > General > Device Management"
-        kill $XCODE_PID $IPROXY_PID 2>/dev/null
-        exit 1
+    if grep -q "Signing for\|code signing" "$build_log"; then
+        print_warning "Code signing error - please check Xcode signing configuration"
     fi
+
+    if grep -q "device is locked" "$build_log"; then
+        print_warning "Device is locked - please unlock and try again"
+    fi
+
+    rm -f "$build_log"
+    exit 1
 }
 
-run_wda_only() {
+start_wda() {
     print_step "Starting WebDriverAgent..."
 
-    # Check if WDA directory exists
-    if [[ ! -d "$WDA_DIR" ]]; then
-        print_error "WebDriverAgent not found at $WDA_DIR"
-        print_info "Run '$0 setup' first to install WebDriverAgent."
-        exit 1
-    fi
-
     cd "$WDA_DIR"
 
-    # Kill any existing WDA-related processes
-    print_info "Stopping any existing WDA sessions..."
+    # Kill any existing sessions
     pkill -f "iproxy.*8100" 2>/dev/null || true
     pkill -f "xcodebuild.*WebDriverAgent" 2>/dev/null || true
     sleep 1
 
-    print_info "Launching WebDriverAgent on $DEVICE_NAME..."
-    print_info "This may take a few seconds..."
-    echo ""
-
-    # Start xcodebuild in background
+    # Start xcodebuild
     xcodebuild test-without-building \
         -project WebDriverAgent.xcodeproj \
         -scheme WebDriverAgentRunner \
@@ -398,12 +299,12 @@ run_wda_only() {
     XCODE_PID=$!
     sleep 5
 
-    # Start iproxy for USB tunneling
+    # Start iproxy
     iproxy 8100 8100 -u "$DEVICE_UDID" > /dev/null 2>&1 &
     IPROXY_PID=$!
     sleep 2
 
-    # Set up cleanup trap
+    # Cleanup handler
     cleanup() {
         echo ""
         print_info "Stopping WebDriverAgent..."
@@ -414,71 +315,46 @@ run_wda_only() {
     }
     trap cleanup INT TERM
 
+    # Verify connection
     if curl -s http://localhost:8100/status | grep -q "ready"; then
-        print_success "WebDriverAgent is running!"
-        echo ""
-        print_info "WDA URL: http://localhost:8100"
-        print_info "You can now use touch input in VS Code"
-        print_info "Keep this terminal open - press Ctrl+C to stop WDA"
+        print_success "WebDriverAgent running at http://localhost:8100"
         echo ""
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${BOLD}  WDA is active. Waiting...${NC}"
+        echo -e "${BOLD}  ✓ Ready! Touch input is now available in VS Code${NC}"
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        # Wait indefinitely until user stops
+        echo ""
+        print_info "Keep this terminal open. Press Ctrl+C to stop."
+        echo ""
         wait $XCODE_PID 2>/dev/null
     else
-        print_error "Failed to start WebDriverAgent"
-        print_info "Make sure WDA was built successfully with 'setup' command"
+        print_error "Failed to connect to WebDriverAgent"
+        print_info "You may need to trust the developer on your device:"
+        print_info "Settings > General > VPN & Device Management"
         kill $XCODE_PID $IPROXY_PID 2>/dev/null
         exit 1
     fi
 }
 
-print_usage() {
-    echo "Usage: $0 [command]"
-    echo ""
-    echo "Commands:"
-    echo "  setup    Full setup (clone, configure, build, run)"
-    echo "  start    Start WDA (requires previous setup)"
-    echo "  help     Show this help message"
-    echo ""
-}
-
 # Main
 main() {
-    print_header "WebDriverAgent Setup for scrcpy-vscode"
+    print_header "WebDriverAgent for scrcpy-vscode"
 
-    local command="${1:-setup}"
+    # Always run these checks
+    check_macos
+    check_xcode
+    check_iproxy
+    build_ios_helper
+    check_ios_device
+    setup_wda_repo
 
-    case "$command" in
-        setup)
-            check_macos
-            check_xcode
-            check_iproxy
-            build_ios_helper
-            check_ios_device
-            check_developer_mode
-            clone_wda
-            configure_signing
-            build_wda
-            test_wda
-            ;;
-        start|run)
-            check_macos
-            check_iproxy
-            build_ios_helper
-            check_ios_device
-            run_wda_only
-            ;;
-        help|--help|-h)
-            print_usage
-            ;;
-        *)
-            print_error "Unknown command: $command"
-            print_usage
-            exit 1
-            ;;
-    esac
+    # Check if WDA is built, build if needed
+    if ! check_wda_built; then
+        configure_signing
+        build_wda
+    fi
+
+    # Start WDA
+    start_wda
 }
 
 main "$@"

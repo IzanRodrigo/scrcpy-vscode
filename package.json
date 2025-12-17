@@ -511,13 +511,8 @@
         "icon": "$(device-desktop)"
       },
       {
-        "command": "scrcpy.setupiOSInput",
-        "title": "%command.setupiOSInput%",
-        "icon": "$(tools)"
-      },
-      {
-        "command": "scrcpy.startiOSInput",
-        "title": "%command.startiOSInput%",
+        "command": "scrcpy.startIOSInput",
+        "title": "%command.startIOSInput%",
         "icon": "$(play)"
       },
       {
@@ -682,14 +677,9 @@
           "group": "2_device@3"
         },
         {
-          "command": "scrcpy.setupiOSInput",
+          "command": "scrcpy.startIOSInput",
           "when": "view == scrcpy.deviceView && isMac",
           "group": "3_ios@1"
-        },
-        {
-          "command": "scrcpy.startiOSInput",
-          "when": "view == scrcpy.deviceView && isMac",
-          "group": "3_ios@2"
         }
       ]
     },

@@ -91,25 +91,8 @@ export async function activate(context: vscode.ExtensionContext) {
     provider?.selectDisplay();
   });
 
-  // Register iOS input setup command (macOS only)
-  const setupiOSInputCommand = vscode.commands.registerCommand('scrcpy.setupiOSInput', async () => {
-    if (process.platform !== 'darwin') {
-      vscode.window.showWarningMessage(
-        vscode.l10n.t('iOS input control is only available on macOS')
-      );
-      return;
-    }
-    const scriptPath = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'setup-wda.sh').fsPath;
-    const terminal = vscode.window.createTerminal({
-      name: 'iOS Input Setup',
-      cwd: context.extensionUri.fsPath,
-    });
-    terminal.show();
-    terminal.sendText(`bash "${scriptPath}" setup`);
-  });
-
-  // Register iOS input start command (macOS only)
-  const startiOSInputCommand = vscode.commands.registerCommand('scrcpy.startiOSInput', async () => {
+  // Register iOS input control command (macOS only)
+  const startIOSInputCommand = vscode.commands.registerCommand('scrcpy.startIOSInput', async () => {
     if (process.platform !== 'darwin') {
       vscode.window.showWarningMessage(
         vscode.l10n.t('iOS input control is only available on macOS')
@@ -122,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext) {
       cwd: context.extensionUri.fsPath,
     });
     terminal.show();
-    terminal.sendText(`bash "${scriptPath}" start`);
+    terminal.sendText(`bash "${scriptPath}"`);
   });
 
   // Register tab switching commands (for keyboard shortcuts)
@@ -204,8 +187,7 @@ export async function activate(context: vscode.ExtensionContext) {
     toggleRecordingCommand,
     listCamerasCommand,
     selectDisplayCommand,
-    setupiOSInputCommand,
-    startiOSInputCommand,
+    startIOSInputCommand,
     ...tabCommands,
     ...browseDisposables,
     ...resetDisposables
