@@ -1068,7 +1068,7 @@ export class DeviceService {
       densityResult,
       layoutBoundsResult,
     ] = await Promise.all([
-      execAdb(['shell', 'settings', 'get', 'secure', 'ui_night_mode']).catch(() => ''),
+      execAdb(['shell', 'cmd', 'uimode', 'night']).catch(() => ''),
       execAdb(['shell', 'cmd', 'overlay', 'list']).catch(() => ''),
       execAdb(['shell', 'settings', 'get', 'secure', 'enabled_accessibility_services']).catch(
         () => ''
@@ -1078,13 +1078,13 @@ export class DeviceService {
       execAdb(['shell', 'getprop', 'debug.layout']).catch(() => ''),
     ]);
 
-    // Parse dark mode (0=auto, 1=light, 2=dark)
+    // Parse dark mode from "cmd uimode night" output (e.g., "Night mode: yes")
     let darkMode: DarkMode = 'auto';
-    const nightMode = parseInt(nightModeResult, 10);
-    if (nightMode === 1) {
-      darkMode = 'light';
-    } else if (nightMode === 2) {
+    const nightModeLower = nightModeResult.toLowerCase();
+    if (nightModeLower.includes('yes')) {
       darkMode = 'dark';
+    } else if (nightModeLower.includes('no')) {
+      darkMode = 'light';
     }
 
     // Parse navigation mode from overlay list
@@ -1157,29 +1157,40 @@ export class DeviceService {
 
     switch (setting) {
       case 'darkMode': {
-        // 0=auto, 1=light, 2=dark
-        const modeValue = value === 'light' ? '1' : value === 'dark' ? '2' : '0';
-        await execAdb(['shell', 'settings', 'put', 'secure', 'ui_night_mode', modeValue]);
+        // Use cmd uimode for reliable dark mode switching
+        const modeArg = value === 'light' ? 'no' : value === 'dark' ? 'yes' : 'auto';
+        await execAdb(['shell', 'cmd', 'uimode', 'night', modeArg]);
         break;
       }
 
       case 'navigationMode': {
-        // First disable all navigation overlays, then enable the selected one
+        // Disable all navigation overlays first
         const overlays = [
           'com.android.internal.systemui.navbar.gestural',
           'com.android.internal.systemui.navbar.twobutton',
-          'com.android.internal.systemui.navbar.threebutton',
         ];
         for (const overlay of overlays) {
           await execAdb(['shell', 'cmd', 'overlay', 'disable', overlay]).catch(() => {});
         }
-        const targetOverlay =
-          value === 'gestural'
-            ? 'com.android.internal.systemui.navbar.gestural'
-            : value === 'twobutton'
-              ? 'com.android.internal.systemui.navbar.twobutton'
-              : 'com.android.internal.systemui.navbar.threebutton';
-        await execAdb(['shell', 'cmd', 'overlay', 'enable', targetOverlay]);
+        // Three-button is the default (no overlay needed)
+        // Only enable overlay for gestural or twobutton
+        if (value === 'gestural') {
+          await execAdb([
+            'shell',
+            'cmd',
+            'overlay',
+            'enable',
+            'com.android.internal.systemui.navbar.gestural',
+          ]);
+        } else if (value === 'twobutton') {
+          await execAdb([
+            'shell',
+            'cmd',
+            'overlay',
+            'enable',
+            'com.android.internal.systemui.navbar.twobutton',
+          ]);
+        }
         break;
       }
 
