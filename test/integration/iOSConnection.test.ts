@@ -604,7 +604,7 @@ describe('iOSConnection', () => {
     });
   });
 
-  describe('unsupported operations', () => {
+  describe('unsupported operations (WDA disabled)', () => {
     it('should have no-op touch methods', () => {
       expect(() => connection.sendTouch?.()).not.toThrow();
     });
@@ -620,6 +620,48 @@ describe('iOSConnection', () => {
     it('should return null for screenshot', async () => {
       const result = await connection.takeScreenshot();
       expect(result).toBeNull();
+    });
+  });
+
+  describe('capabilities', () => {
+    it('should have capabilities property', () => {
+      expect(connection.capabilities).toBeDefined();
+      expect(connection.capabilities.supportsTouch).toBe(false);
+    });
+
+    it('should start with disabled input when WDA is not enabled', () => {
+      expect(connection.capabilities.supportsTouch).toBe(false);
+      expect(connection.capabilities.supportsKeyboard).toBe(false);
+    });
+  });
+
+  describe('WDA integration', () => {
+    let wdaConnection: iOSConnection;
+
+    beforeEach(() => {
+      // Create connection with WDA enabled
+      wdaConnection = new iOSConnection('WDA-TEST-UDID', '/mock/ios-helper', {
+        webDriverAgentEnabled: true,
+        webDriverAgentPort: 8100,
+      });
+    });
+
+    afterEach(() => {
+      wdaConnection.disconnect();
+    });
+
+    it('should store WDA config', () => {
+      // WDA is enabled but not yet ready (no actual connection)
+      expect(wdaConnection.isWdaReady).toBe(false);
+    });
+
+    it('should report WDA not ready before streaming starts', () => {
+      expect(wdaConnection.isWdaReady).toBe(false);
+    });
+
+    it('should not modify capabilities until WDA connects', () => {
+      // Without successful WDA connection, touch should remain disabled
+      expect(wdaConnection.capabilities.supportsTouch).toBe(false);
     });
   });
 });

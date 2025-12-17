@@ -72,8 +72,8 @@ export class WDAClient {
 
   // Touch state tracking for converting down/move/up to WDA action chains
   private touchActive = false;
-  private lastTouchX = 0;
-  private lastTouchY = 0;
+  private touchStartX = 0;
+  private touchStartY = 0;
 
   constructor(host: string, port: number = 8100) {
     this.baseUrl = `http://${host}:${port}`;
@@ -155,31 +155,30 @@ export class WDAClient {
     const sessionId = await this.ensureSession();
 
     if (action === 'down') {
-      // Start a new touch
+      // Start a new touch - store initial position
       this.touchActive = true;
-      this.lastTouchX = x;
-      this.lastTouchY = y;
+      this.touchStartX = x;
+      this.touchStartY = y;
 
       // For a single tap, we'll wait for the 'up' event
       // For drag, we'll track the movement
     } else if (action === 'move' && this.touchActive) {
-      // During drag, update position (we'll send the swipe on 'up')
-      this.lastTouchX = x;
-      this.lastTouchY = y;
+      // During drag, movement is tracked but start position stays fixed
+      // (Start position is only set on 'down')
     } else if (action === 'up' && this.touchActive) {
       this.touchActive = false;
 
       // Check if this was a tap (no significant movement) or a drag
-      const startX = this.lastTouchX;
-      const startY = this.lastTouchY;
-      const distance = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+      const distance = Math.sqrt(
+        Math.pow(x - this.touchStartX, 2) + Math.pow(y - this.touchStartY, 2)
+      );
 
       if (distance < 10) {
         // Tap at the original position
-        await this.performTap(sessionId, startX, startY);
+        await this.performTap(sessionId, this.touchStartX, this.touchStartY);
       } else {
         // Swipe from start to end
-        await this.performSwipe(sessionId, startX, startY, x, y);
+        await this.performSwipe(sessionId, this.touchStartX, this.touchStartY, x, y);
       }
     }
   }
