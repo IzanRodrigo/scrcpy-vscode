@@ -369,10 +369,14 @@ run_wda_only() {
         print_success "WebDriverAgent is running!"
         echo ""
         print_info "WDA URL: http://localhost:8100"
-        print_info "Press Ctrl+C to stop"
+        print_info "You can now use touch input in VS Code"
+        print_info "Keep this terminal open - press Ctrl+C to stop WDA"
         echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BOLD}  WDA is active. Waiting...${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         # Wait indefinitely until user stops
-        wait $XCODE_PID
+        wait $XCODE_PID 2>/dev/null
     else
         print_error "Failed to start WebDriverAgent"
         print_info "Make sure WDA was built successfully with 'setup' command"
