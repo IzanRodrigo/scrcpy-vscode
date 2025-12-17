@@ -103,6 +103,55 @@ check_iproxy() {
     fi
 }
 
+build_ios_helper() {
+    print_step "Checking ios-helper binary..."
+
+    # Get script directory and project root
+    local script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    local project_root
+    project_root="$(dirname "$script_dir")"
+    local helper_dir="$project_root/native/ios-helper"
+    local build_dir="$helper_dir/.build"
+
+    # Check if already built
+    local helper_path=""
+    for arch in "arm64-apple-macosx" "x86_64-apple-macosx" ""; do
+        local check_path="$build_dir/${arch:+$arch/}release/ios-helper"
+        if [[ -f "$check_path" ]]; then
+            helper_path="$check_path"
+            break
+        fi
+    done
+
+    if [[ -n "$helper_path" ]]; then
+        print_success "ios-helper already built"
+        return 0
+    fi
+
+    # Check if source exists
+    if [[ ! -d "$helper_dir" ]]; then
+        print_error "ios-helper source not found at $helper_dir"
+        exit 1
+    fi
+
+    # Check for Swift
+    if ! command -v swift &> /dev/null; then
+        print_error "Swift is not installed (comes with Xcode)"
+        exit 1
+    fi
+
+    print_info "Building ios-helper..."
+    cd "$helper_dir"
+
+    if swift build -c release; then
+        print_success "ios-helper built successfully"
+    else
+        print_error "Failed to build ios-helper"
+        exit 1
+    fi
+}
+
 check_ios_device() {
     print_step "Checking for connected iOS devices..."
 
@@ -406,6 +455,7 @@ main() {
             check_macos
             check_xcode
             check_iproxy
+            build_ios_helper
             check_ios_device
             check_developer_mode
             clone_wda
@@ -416,6 +466,7 @@ main() {
         start|run)
             check_macos
             check_iproxy
+            build_ios_helper
             check_ios_device
             run_wda_only
             ;;
