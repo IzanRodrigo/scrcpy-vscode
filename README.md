@@ -10,7 +10,7 @@
 [![Visual Studio Marketplace Installs](https://img.shields.io/visual-studio-marketplace/azure-devops/installs/total/izantech.scrcpy-vscode)](https://marketplace.visualstudio.com/items?itemName=izantech.scrcpy-vscode)
 [![Visual Studio Marketplace Rating](https://img.shields.io/visual-studio-marketplace/stars/izantech.scrcpy-vscode)](https://marketplace.visualstudio.com/items?itemName=izantech.scrcpy-vscode)
 
-Display and control your Android device screen directly within VS Code, similar to Android Studio's "Running Devices" feature.
+Display and control your Android device screen directly within VS Code, similar to Android Studio's "Running Devices" feature. Also supports iOS device mirroring on macOS (experimental).
 
 ## Features
 
@@ -24,6 +24,7 @@ Display and control your Android device screen directly within VS Code, similar 
 - **Auto-connect/reconnect** - Automatically handles device connections
 - **APK install & file upload** - Via toolbar buttons
 - **Hardware-accelerated decoding** - WebCodecs API for smooth playback
+- **iOS support (experimental)** - Mirror iOS devices on macOS via CoreMediaIO
 
 ### Advanced Features
 
@@ -74,6 +75,53 @@ Display and control your Android device screen directly within VS Code, similar 
 
 **Legacy**: `adb tcpip 5555`, then connect via IP
 
+### iOS Devices (Experimental, macOS only)
+
+iOS device mirroring is available as an experimental feature on macOS.
+
+#### Quick Start
+
+1. Enable iOS support: **Settings > scrcpy > iOS: Enabled** (check the box)
+2. Connect your iOS device via USB
+3. Trust the computer on your iOS device if prompted
+4. The device should appear in the device list with an Apple icon
+
+> **Note:** iOS mirroring is display-only by default. For touch and keyboard input, see the optional WebDriverAgent setup below.
+
+#### Optional: Enable Touch Input with WebDriverAgent
+
+To control your iOS device (tap, swipe, type), you need to set up [WebDriverAgent](https://github.com/appium/WebDriverAgent):
+
+1. **Install prerequisites:**
+
+   ```bash
+   brew install libimobiledevice
+   ```
+
+2. **Clone and build WebDriverAgent:**
+
+   ```bash
+   git clone https://github.com/appium/WebDriverAgent.git
+   cd WebDriverAgent
+   open WebDriverAgent.xcodeproj
+   ```
+
+3. **Configure in Xcode:**
+   - Select `WebDriverAgentRunner` target
+   - Enable automatic signing with your Apple Developer team
+   - Connect your iOS device and press ⌘+U to build and run
+
+4. **Start the USB tunnel (keep this running):**
+
+   ```bash
+   iproxy 8100 8100 -u <your-device-UDID>
+   ```
+
+5. **Enable in VS Code:**
+   - Settings > scrcpy > iOS: Web Driver Agent Enabled (check the box)
+
+For detailed instructions and troubleshooting, see [iOS Input Control Guide](docs/ios-input-control-research.md).
+
 ## Commands
 
 | Command                               | Description                 |
@@ -108,9 +156,17 @@ See [Troubleshooting Guide](docs/troubleshooting.md) for common issues.
 
 ## Requirements
 
+### Android
+
 - VS Code 1.85.0+
 - ADB installed
 - scrcpy installed
+
+### iOS (experimental)
+
+- macOS only
+- iOS device connected via USB
+- Optional: WebDriverAgent + iproxy for touch input
 
 ## License
 
