@@ -69,6 +69,8 @@ export class iOSConnection implements IDeviceConnection {
   private readonly wdaEnabled: boolean;
   private readonly wdaPort: number;
   private resolvedWdaUdid: string | null = null;
+  private wdaScreenWidth = 0;
+  private wdaScreenHeight = 0;
 
   // Callbacks
   onVideoFrame?: VideoFrameCallback;
@@ -197,6 +199,7 @@ export class iOSConnection implements IDeviceConnection {
       if (status?.ready !== false) {
         this.wdaReady = true;
         this.updateCapabilities(true);
+        await this.refreshWdaWindowSize();
         this.onStatus?.('WDA: Connected, input enabled');
         return;
       } else {
@@ -230,6 +233,7 @@ export class iOSConnection implements IDeviceConnection {
       if (status?.ready !== false) {
         this.wdaReady = true;
         this.updateCapabilities(true);
+        await this.refreshWdaWindowSize();
         this.onStatus?.('WDA: Connected, input enabled');
       } else {
         this.onStatus?.('WDA: Not ready, input disabled');
@@ -409,6 +413,29 @@ export class iOSConnection implements IDeviceConnection {
     };
   }
 
+  private async refreshWdaWindowSize(): Promise<void> {
+    if (!this.wdaClient || !this.wdaReady) {
+      return;
+    }
+
+    try {
+      const size = await this.wdaClient.getWindowSize();
+      this.wdaScreenWidth = size.width;
+      this.wdaScreenHeight = size.height;
+      console.log(`[WDA] Window size: ${size.width}x${size.height}`);
+    } catch (error) {
+      console.error('[WDA] Failed to get window size:', error);
+    }
+  }
+
+  private getInputTargetSize(): { width: number; height: number } {
+    if (this.wdaScreenWidth > 0 && this.wdaScreenHeight > 0) {
+      return { width: this.wdaScreenWidth, height: this.wdaScreenHeight };
+    }
+
+    return { width: this._deviceWidth, height: this._deviceHeight };
+  }
+
   /**
    * Parse binary protocol from helper stdout
    */
@@ -490,6 +517,10 @@ export class iOSConnection implements IDeviceConnection {
     // Parse dimensions
     this._deviceWidth = payload.readUInt32BE(0);
     this._deviceHeight = payload.readUInt32BE(4);
+
+    if (this.wdaReady) {
+      void this.refreshWdaWindowSize();
+    }
 
     // Extract config data (SPS/PPS in Annex B format)
     const configData = new Uint8Array(payload.subarray(8));
@@ -607,9 +638,14 @@ export class iOSConnection implements IDeviceConnection {
       return;
     }
 
-    // Denormalize coordinates to device pixels
-    const absX = x * this._deviceWidth;
-    const absY = y * this._deviceHeight;
+    const { width, height } = this.getInputTargetSize();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+
+    // Denormalize coordinates to device coordinates (WDA expects screen points)
+    const absX = x * width;
+    const absY = y * height;
 
     this.wdaClient.touch(wdaAction, absX, absY).catch((error) => {
       console.error('[WDA] Touch failed:', error);
@@ -628,9 +664,14 @@ export class iOSConnection implements IDeviceConnection {
       return;
     }
 
-    // Denormalize coordinates to device pixels
-    const absX = x * this._deviceWidth;
-    const absY = y * this._deviceHeight;
+    const { width, height } = this.getInputTargetSize();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+
+    // Denormalize coordinates to device coordinates
+    const absX = x * width;
+    const absY = y * height;
 
     this.wdaClient.scroll(absX, absY, dx, dy).catch((error) => {
       console.error('[WDA] Scroll failed:', error);

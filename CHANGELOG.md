@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - H.264 video streaming with hardware decoding
   - Platform-aware UI showing Apple icon for iOS devices
   - **Video source selection** - Use `scrcpy.videoSource` (`display`/`camera`) to choose iOS screen capture vs Continuity Camera
+  - **Window capture fallback** - Automatically detects iPhone Mirroring or AirPlay windows when CoreMediaIO device unavailable (macOS 26+)
+- **iOS preview tool** - Standalone CLI for testing iOS capture outside VS Code
+  - `npm run ios:preview -- list --video-source display` to list capture sources
+  - `npm run ios:preview -- preview <UDID>` to preview capture with FPS counter
+  - Useful for debugging screen recording permissions and device detection
 - **WebDriverAgent integration** - Optional touch/keyboard input for iOS devices
   - Tap, swipe, and scroll gestures via WDA HTTP API
   - Keyboard text input support
@@ -48,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed iOS streaming crash in `ios-helper` when converting H.264 AVCC NAL units to Annex B
 - Fixed `ios-helper` path resolution so the packaged extension can find the bundled binary under `dist/`
 - Fixed iOS screen capture device discovery on macOS 26.x by auto-starting `iOSScreenCaptureAssistant`
+- Fixed WDA touch coordinates when video dimensions differ from device screen (window capture mode)
+  - Now fetches actual device screen size from WDA for accurate touch mapping
+- Removed dead code (`getIOSDevicesFromContinuityCamera`) superseded by window capture fallback
 
 ### Known Issues
 

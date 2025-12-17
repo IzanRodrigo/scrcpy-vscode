@@ -137,10 +137,16 @@ src/
 │   └── index.ts           # iOS module exports
 ├── native/
 │   └── ios-helper/        # Swift CLI for iOS screen capture
-│       └── Sources/ios-helper/
-│           ├── main.swift           # CLI entry point (list, stream, screenshot)
-│           ├── DeviceEnumerator.swift # CoreMediaIO device discovery
-│           └── ScreenCapture.swift  # AVFoundation video capture
+│       └── Sources/
+│           ├── ios-helper/
+│           │   ├── main.swift                  # CLI entry point (list, stream, screenshot)
+│           │   ├── DeviceEnumerator.swift      # CoreMediaIO device discovery
+│           │   ├── ScreenCapture.swift         # AVFoundation video capture
+│           │   ├── MirroringWindowEnumerator.swift # iPhone Mirroring/AirPlay window discovery
+│           │   ├── WindowCapture.swift         # ScreenCaptureKit window capture
+│           │   └── FrameEncoder.swift          # H.264 encoding via VideoToolbox
+│           └── ios-preview/
+│               └── main.swift                  # Standalone preview CLI for testing
 ├── types/
 │   ├── AppState.ts       # State interfaces (DeviceState, AppStateSnapshot, etc.)
 │   └── WebviewActions.ts # Typed actions from webview to extension
@@ -281,9 +287,17 @@ The ios-helper Swift binary handles iOS device discovery and screen capture:
    - Outputs raw BGRA frames which are H.264 encoded via VideoToolbox
    - Binary protocol: type (1 byte) + length (4 bytes BE) + payload
 
-3. **Known Limitations**:
+3. **Window Capture Fallback** (`MirroringWindowEnumerator.swift` + `WindowCapture.swift`):
+   - Automatically discovers iPhone Mirroring or AirPlay windows when CoreMediaIO device unavailable
+   - Uses ScreenCaptureKit (macOS 14+) to capture system windows
+   - Window-based devices have synthetic UDIDs like `window:12345`
+   - `main.swift` routes `window:` prefixed UDIDs to WindowCapture instead of ScreenCapture
+   - Touch coordinates are mapped using WDA's actual screen dimensions (may differ from video dimensions)
+
+4. **Known Limitations**:
    - On macOS 26.x with iOS 26.x (including 26.1), the CoreMediaIO screen capture device may not appear until `iOSScreenCaptureAssistant` is running and Screen Recording permission is granted
    - If screen capture isn't available, set `scrcpy.videoSource` to `camera` to use Continuity Camera instead
+   - Window capture requires iPhone Mirroring or AirPlay to be active and visible on screen
 
 ## Reference: scrcpy Source
 
