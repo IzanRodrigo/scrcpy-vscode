@@ -694,7 +694,82 @@ describe('iOSConnection', () => {
       expect(wdaConnection.capabilities.supportsVolumeControl).toBe(true);
       expect(wdaConnection.capabilities.supportsTouch).toBe(true);
       expect(wdaConnection.capabilities.supportsKeyboard).toBe(true);
-      expect(wdaConnection.capabilities.supportsSystemButtons).toBe(true);
+      expect(wdaConnection.capabilities.supportsHomeButton).toBe(true);
+      expect(wdaConnection.capabilities.supportsBackButton).toBe(true);
+      // supportsRecentsButton depends on device model (home button detection)
+    });
+
+    describe('sendKey gesture handling', () => {
+      it('should trigger back gesture for keycode 4', () => {
+        const mockPerformBackGesture = vi.fn();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaClient = {
+          performBackGesture: mockPerformBackGesture,
+          performAppSwitcherGesture: vi.fn(),
+          pressButton: vi.fn(),
+          disconnect: vi.fn(),
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaReady = true;
+
+        wdaConnection.sendKey!(1, 4); // action=1 (up), keycode=4 (BACK)
+
+        expect(mockPerformBackGesture).toHaveBeenCalled();
+      });
+
+      it('should trigger app switcher gesture for keycode 187', () => {
+        const mockPerformAppSwitcherGesture = vi.fn();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaClient = {
+          performBackGesture: vi.fn(),
+          performAppSwitcherGesture: mockPerformAppSwitcherGesture,
+          pressButton: vi.fn(),
+          disconnect: vi.fn(),
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaReady = true;
+
+        wdaConnection.sendKey!(1, 187); // action=1 (up), keycode=187 (RECENTS)
+
+        expect(mockPerformAppSwitcherGesture).toHaveBeenCalled();
+      });
+
+      it('should not trigger gestures on key down (action=0)', () => {
+        const mockPerformBackGesture = vi.fn();
+        const mockPerformAppSwitcherGesture = vi.fn();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaClient = {
+          performBackGesture: mockPerformBackGesture,
+          performAppSwitcherGesture: mockPerformAppSwitcherGesture,
+          pressButton: vi.fn(),
+          disconnect: vi.fn(),
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaReady = true;
+
+        wdaConnection.sendKey!(0, 4); // action=0 (down), keycode=4 (BACK)
+        wdaConnection.sendKey!(0, 187); // action=0 (down), keycode=187 (RECENTS)
+
+        expect(mockPerformBackGesture).not.toHaveBeenCalled();
+        expect(mockPerformAppSwitcherGesture).not.toHaveBeenCalled();
+      });
+
+      it('should still call pressButton for home (keycode 3)', () => {
+        const mockPressButton = vi.fn().mockResolvedValue(undefined);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaClient = {
+          performBackGesture: vi.fn(),
+          performAppSwitcherGesture: vi.fn(),
+          pressButton: mockPressButton,
+          disconnect: vi.fn(),
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (wdaConnection as any).wdaReady = true;
+
+        wdaConnection.sendKey!(1, 3); // action=1 (up), keycode=3 (HOME)
+
+        expect(mockPressButton).toHaveBeenCalledWith('home');
+      });
     });
   });
 

@@ -64,7 +64,9 @@ type DevicePlatform = 'android' | 'ios';
 interface PlatformCapabilities {
   supportsTouch: boolean;
   supportsKeyboard: boolean;
-  supportsSystemButtons: boolean;
+  supportsHomeButton: boolean;
+  supportsBackButton: boolean;
+  supportsRecentsButton: boolean;
   supportsVolumeControl: boolean;
   supportsRotation: boolean;
   supportsDisplaySelection: boolean;
@@ -525,13 +527,25 @@ function updateRotateButton(width: number, height: number): void {
  * Update toolbar button visibility based on device capabilities
  */
 function updateToolbarForCapabilities(capabilities: PlatformCapabilities | null): void {
-  // System buttons (Back=4, Home=3, Recent Apps=187)
-  const systemButtons = controlToolbar?.querySelectorAll(
-    '[data-keycode="4"], [data-keycode="3"], [data-keycode="187"]'
-  );
-  systemButtons?.forEach((btn) => {
-    (btn as HTMLElement).style.display = capabilities?.supportsSystemButtons ? '' : 'none';
-  });
+  // Back button (keycode=4)
+  const backButton = controlToolbar?.querySelector('[data-keycode="4"]');
+  if (backButton) {
+    (backButton as HTMLElement).style.display = capabilities?.supportsBackButton ? '' : 'none';
+  }
+
+  // Home button (keycode=3)
+  const homeButton = controlToolbar?.querySelector('[data-keycode="3"]');
+  if (homeButton) {
+    (homeButton as HTMLElement).style.display = capabilities?.supportsHomeButton ? '' : 'none';
+  }
+
+  // Recents button (keycode=187)
+  const recentsButton = controlToolbar?.querySelector('[data-keycode="187"]');
+  if (recentsButton) {
+    (recentsButton as HTMLElement).style.display = capabilities?.supportsRecentsButton
+      ? ''
+      : 'none';
+  }
 
   // Volume buttons in dropdown (Volume Down=25, Volume Up=24)
   const volumeItems = leftDropdownContent?.querySelectorAll(
@@ -549,11 +563,16 @@ function updateToolbarForCapabilities(capabilities: PlatformCapabilities | null)
   // Notification/Settings panels (Android-specific swipe gestures)
   const notificationBtn = document.getElementById('notification-panel-btn');
   const settingsBtn = document.getElementById('settings-panel-btn');
+  // Show these panels only when all system buttons are supported (Android)
+  const hasFullSystemAccess =
+    capabilities?.supportsHomeButton &&
+    capabilities?.supportsBackButton &&
+    capabilities?.supportsRecentsButton;
   if (notificationBtn) {
-    notificationBtn.style.display = capabilities?.supportsSystemButtons ? '' : 'none';
+    notificationBtn.style.display = hasFullSystemAccess ? '' : 'none';
   }
   if (settingsBtn) {
-    settingsBtn.style.display = capabilities?.supportsSystemButtons ? '' : 'none';
+    settingsBtn.style.display = hasFullSystemAccess ? '' : 'none';
   }
 }
 
@@ -1058,7 +1077,9 @@ function createDeviceSession(
   const deviceCapabilities: PlatformCapabilities = capabilities || {
     supportsTouch: true,
     supportsKeyboard: true,
-    supportsSystemButtons: true,
+    supportsHomeButton: true,
+    supportsBackButton: true,
+    supportsRecentsButton: true,
     supportsVolumeControl: true,
     supportsRotation: true,
     supportsDisplaySelection: true,

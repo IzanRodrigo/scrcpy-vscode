@@ -9,7 +9,9 @@ export interface PlatformCapabilities {
   // Control
   supportsTouch: boolean;
   supportsKeyboard: boolean;
-  supportsSystemButtons: boolean; // home, back, recent apps
+  supportsHomeButton: boolean;
+  supportsBackButton: boolean;
+  supportsRecentsButton: boolean;
   supportsVolumeControl: boolean;
 
   // Features
@@ -33,7 +35,9 @@ export const ANDROID_CAPABILITIES: PlatformCapabilities = {
   // Control - full support
   supportsTouch: true,
   supportsKeyboard: true,
-  supportsSystemButtons: true,
+  supportsHomeButton: true,
+  supportsBackButton: true,
+  supportsRecentsButton: true,
   supportsVolumeControl: true,
 
   // Features - full support
@@ -57,7 +61,9 @@ export const IOS_CAPABILITIES: PlatformCapabilities = {
   // Control - display only for MVP
   supportsTouch: false,
   supportsKeyboard: false,
-  supportsSystemButtons: false,
+  supportsHomeButton: false,
+  supportsBackButton: false,
+  supportsRecentsButton: false, // iOS app switcher gesture not supported via WDA
   supportsVolumeControl: false,
 
   // Features - limited

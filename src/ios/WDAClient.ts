@@ -330,6 +330,95 @@ export class WDAClient {
   }
 
   /**
+   * Perform a back gesture (wide swipe from left edge to right)
+   * Fire-and-forget: does not wait for WDA response
+   */
+  performBackGesture(): void {
+    if (!this.sessionId) {
+      return;
+    }
+
+    const sessionId = this.sessionId;
+
+    // Get window size then perform wide swipe from left edge
+    this.getWindowSize()
+      .then((size) => {
+        const startX = 3; // Start just inside left edge (x=0 may be ignored)
+        const endX = size.width * 0.9; // Swipe to 90% of screen width
+        const y = size.height * 0.5; // Middle of screen vertically
+
+        return this.performSwipe(sessionId, startX, y, endX, y, 300);
+      })
+      .catch((e) => console.error('[WDA] Back gesture failed:', e));
+  }
+
+  /**
+   * Perform app switcher gesture
+   * Uses pressButton with 'home' name - double tap triggers app switcher
+   * Note: Swipe-up gestures don't work reliably via WDA for system gestures
+   * Fire-and-forget: does not wait for WDA response
+   */
+  performAppSwitcherGesture(): void {
+    if (!this.sessionId) {
+      return;
+    }
+
+    const sessionId = this.sessionId;
+
+    // Use activeAppInfo to get current app, then use special app switcher activation
+    // Since swipe gestures don't reliably trigger system UI, use double-tap home
+    // with proper timing for app switcher
+    this.request('POST', `/session/${sessionId}/wda/pressButton`, {
+      name: 'home',
+    })
+      .then(() => new Promise((resolve) => setTimeout(resolve, 150)))
+      .then(() =>
+        this.request('POST', `/session/${sessionId}/wda/pressButton`, {
+          name: 'home',
+        })
+      )
+      .catch((e) => console.error('[WDA] App switcher gesture failed:', e));
+  }
+
+  /**
+   * Perform a swipe gesture followed by a hold (for app switcher)
+   * Uses W3C Actions API with a pause action after the move
+   */
+  private async performSwipeAndHold(
+    sessionId: string,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    swipeDurationMs: number,
+    holdDurationMs: number
+  ): Promise<void> {
+    const actions = {
+      actions: [
+        {
+          type: 'pointer',
+          id: 'finger1',
+          parameters: { pointerType: 'touch' },
+          actions: [
+            { type: 'pointerMove', duration: 0, x: Math.round(startX), y: Math.round(startY) },
+            { type: 'pointerDown', button: 0 },
+            {
+              type: 'pointerMove',
+              duration: swipeDurationMs,
+              x: Math.round(endX),
+              y: Math.round(endY),
+            },
+            { type: 'pause', duration: holdDurationMs }, // Hold at end position
+            { type: 'pointerUp', button: 0 },
+          ],
+        },
+      ],
+    };
+
+    await this.request('POST', `/session/${sessionId}/actions`, actions);
+  }
+
+  /**
    * Get the screen/window size
    */
   async getWindowSize(): Promise<{ width: number; height: number }> {

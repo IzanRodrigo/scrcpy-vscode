@@ -23,15 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **WebDriverAgent integration** - Optional touch/keyboard input for iOS devices
   - Tap, swipe, and scroll gestures via WDA HTTP API
   - Keyboard text input support
-  - Home button and volume control buttons
+  - Home, Back (swipe gesture), and Volume control buttons
+  - Recents button available on devices with physical home button (iPhone 8, SE, older)
   - iproxy USB port forwarding for WDA connection
   - WDA status indicator in device tooltip (connected/connecting/unavailable/disabled)
 - **iOS screenshots** - Native screenshot capture via ios-helper binary
   - Uses AVFoundation single-frame capture
   - Outputs lossless PNG at device resolution
 - **Platform abstraction layer** - `IDeviceConnection` interface for cross-platform support
-  - `PlatformCapabilities` defines per-platform feature availability
-  - Dynamic capability updates based on WDA connection status
+  - `PlatformCapabilities` defines per-platform feature availability with granular button controls
+  - Separate capabilities for Home, Back, Recents buttons (not a single `supportsSystemButtons`)
+  - Dynamic capability updates based on WDA connection status and device model
 - **iOS-specific settings**
   - `scrcpy.ios.enabled` - Enable/disable iOS device support (auto-enabled on macOS)
   - `scrcpy.ios.webDriverAgentEnabled` - Enable/disable WDA input control
@@ -60,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Updated WDA client to use W3C Actions API** - Migrated from legacy `/wda/touch/perform` endpoint to standard W3C WebDriver Actions API (`/actions`) for tap and swipe gestures
 - **Improved iOS scroll performance** - Now uses WDA's native `/wda/scroll` endpoint with direction/distance instead of slow swipe gestures
 - **Reduced iOS input latency** - Touch and scroll are now fire-and-forget (don't wait for WDA response), session is pre-created on connection, and scroll events are debounced to prevent stuttering
+- **Added iOS Back gesture** - Wide swipe from left edge to right (90% of screen width) simulates iOS native back navigation
+- **Device-aware Recents button** - Recents button (double home tap) only shown on devices with physical home button; hidden on Face ID devices where the gesture isn't supported via WDA
 
 ### Known Issues
 

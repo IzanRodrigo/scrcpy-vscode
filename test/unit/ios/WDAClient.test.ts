@@ -332,6 +332,118 @@ describe('WDAClient', () => {
     });
   });
 
+  describe('performBackGesture', () => {
+    beforeEach(async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: { sessionId: 'gesture-session' } }),
+      });
+      const sessionPromise = client.createSession();
+      await vi.runAllTimersAsync();
+      await sessionPromise;
+      mockFetch.mockClear();
+    });
+
+    it('should perform wide swipe from left edge to right', async () => {
+      // Mock getWindowSize
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: { width: 375, height: 812 } }),
+      });
+
+      // Mock swipe action
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      client.performBackGesture();
+      await vi.runAllTimersAsync();
+
+      // Verify window size was fetched
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/window/size'),
+        expect.any(Object)
+      );
+
+      // Verify swipe action: starts from x=3, ends at 90% width (338), y at 50% height (406)
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/actions'),
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringMatching(/"x":3.*"y":406.*"x":338.*"y":406/),
+        })
+      );
+    });
+
+    it('should not perform gesture without session', () => {
+      // Create new client without session
+      const noSessionClient = new WDAClient('localhost', 8100);
+      noSessionClient.performBackGesture();
+
+      // Should not make any fetch calls
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('performAppSwitcherGesture', () => {
+    beforeEach(async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: { sessionId: 'gesture-session' } }),
+      });
+      const sessionPromise = client.createSession();
+      await vi.runAllTimersAsync();
+      await sessionPromise;
+      mockFetch.mockClear();
+    });
+
+    it('should perform double home press for app switcher', async () => {
+      // Mock first home press
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      // Mock second home press
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      client.performAppSwitcherGesture();
+      await vi.runAllTimersAsync();
+
+      // Verify two home button presses were made
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'http://localhost:8100/session/gesture-session/wda/pressButton',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'home' }),
+        })
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'http://localhost:8100/session/gesture-session/wda/pressButton',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'home' }),
+        })
+      );
+    });
+
+    it('should not perform gesture without session', () => {
+      // Create new client without session
+      const noSessionClient = new WDAClient('localhost', 8100);
+      noSessionClient.performAppSwitcherGesture();
+
+      // Should not make any fetch calls
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getWindowSize', () => {
     beforeEach(async () => {
       mockFetch.mockResolvedValueOnce({

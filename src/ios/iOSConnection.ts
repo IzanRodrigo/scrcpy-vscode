@@ -78,6 +78,7 @@ export class iOSConnection implements IDeviceConnection {
   onStatus?: StatusCallback;
   onError?: ErrorCallback;
   onClipboardChange?: (text: string) => void;
+  onCapabilitiesChanged?: (capabilities: PlatformCapabilities) => void;
 
   constructor(
     private targetUDID?: string,
@@ -408,13 +409,126 @@ export class iOSConnection implements IDeviceConnection {
    * Update capabilities based on WDA availability
    */
   private updateCapabilities(wdaConnected: boolean): void {
+    // Check if device has a physical home button (for recents via double-tap)
+    const hasHomeButton = this.deviceHasHomeButton();
+
     this._capabilities = {
       ...IOS_CAPABILITIES,
       supportsTouch: wdaConnected,
       supportsKeyboard: wdaConnected,
-      supportsSystemButtons: wdaConnected, // home button only
+      supportsHomeButton: wdaConnected,
+      supportsBackButton: wdaConnected,
+      // Recents only works on devices with home button (double-tap triggers app switcher)
+      supportsRecentsButton: wdaConnected && hasHomeButton,
       supportsVolumeControl: wdaConnected,
     };
+    // Notify listeners of capability changes
+    this.onCapabilitiesChanged?.(this._capabilities);
+  }
+
+  /**
+   * Check if the device has a physical home button
+   * iPhones with Face ID (X and later, except SE) don't have a home button
+   */
+  private deviceHasHomeButton(): boolean {
+    const model = this._deviceInfo?.model;
+    if (!model) {
+      return false; // Unknown device, assume no home button
+    }
+
+    // Model identifiers for devices WITH home button:
+    // - iPhone SE 2nd gen: iPhone12,8
+    // - iPhone SE 3rd gen: iPhone14,6
+    // - iPhone 8/8 Plus: iPhone10,1/10,2/10,4/10,5
+    // - All iPads with Touch ID
+    // - Older iPhones (6s, 7, etc.)
+
+    // Model identifiers for devices WITHOUT home button (Face ID):
+    // - iPhone X: iPhone10,3/10,6
+    // - iPhone XS/XR/11/12/13/14/15/16 series (except SE)
+
+    const modelLower = model.toLowerCase();
+
+    // Check for SE models (have home button)
+    if (modelLower.includes('se')) {
+      return true;
+    }
+
+    // Check model identifier format (e.g., "iPhone14,6")
+    const iPhoneMatch = model.match(/iphone(\d+),(\d+)/i);
+    if (iPhoneMatch) {
+      const majorVersion = parseInt(iPhoneMatch[1], 10);
+      const minorVersion = parseInt(iPhoneMatch[2], 10);
+
+      // iPhone 8/8 Plus: iPhone10,1/10,2/10,4/10,5 (have home button)
+      if (majorVersion === 10 && [1, 2, 4, 5].includes(minorVersion)) {
+        return true;
+      }
+
+      // iPhone X and later (majorVersion >= 10 with Face ID minorVersions) - no home button
+      // iPhone X: 10,3 and 10,6
+      if (majorVersion === 10 && [3, 6].includes(minorVersion)) {
+        return false;
+      }
+
+      // iPhone SE 2nd gen: iPhone12,8 (has home button)
+      if (majorVersion === 12 && minorVersion === 8) {
+        return true;
+      }
+
+      // iPhone SE 3rd gen: iPhone14,6 (has home button)
+      if (majorVersion === 14 && minorVersion === 6) {
+        return true;
+      }
+
+      // All other iPhone 11+ series have Face ID (no home button)
+      if (majorVersion >= 11) {
+        return false;
+      }
+
+      // iPhone 9 and below (iPhone 7, 6s, etc.) have home button
+      return true;
+    }
+
+    // iPads - check for Face ID models (iPad Pro 3rd gen and later)
+    const iPadMatch = model.match(/ipad(\d+),(\d+)/i);
+    if (iPadMatch) {
+      const majorVersion = parseInt(iPadMatch[1], 10);
+      // iPad Pro 3rd gen (2018) and later with Face ID: iPad8,x and above
+      // Most iPads still have Touch ID/home button
+      if (majorVersion >= 8) {
+        // iPad Pro 11" and 12.9" 3rd gen+ don't have home button
+        // But iPad Air, iPad mini, regular iPad still have it
+        // For simplicity, assume iPads have home button (most do)
+        return true;
+      }
+      return true;
+    }
+
+    // Check for human-readable names
+    if (
+      modelLower.includes('iphone 8') ||
+      modelLower.includes('iphone 7') ||
+      modelLower.includes('iphone 6') ||
+      modelLower.includes('iphone se')
+    ) {
+      return true;
+    }
+
+    if (
+      modelLower.includes('iphone x') ||
+      modelLower.includes('iphone 11') ||
+      modelLower.includes('iphone 12') ||
+      modelLower.includes('iphone 13') ||
+      modelLower.includes('iphone 14') ||
+      modelLower.includes('iphone 15') ||
+      modelLower.includes('iphone 16')
+    ) {
+      return false;
+    }
+
+    // Default: assume no home button for unknown models (safer)
+    return false;
   }
 
   private async refreshWdaWindowSize(): Promise<void> {
@@ -682,9 +796,9 @@ export class iOSConnection implements IDeviceConnection {
 
   /**
    * Send key event to device via WDA
-   * Only supports home button (keycode 3)
+   * Supports: home (3), back (4), volume up/down (24/25), app switcher (187)
    * @param action - 0: down, 1: up
-   * @param keycode - Android keycode (only 3/HOME supported)
+   * @param keycode - Android keycode
    */
   sendKey(action: number, keycode: number, _metastate?: number): void {
     if (!this.wdaClient || !this.wdaReady) {
@@ -696,7 +810,20 @@ export class iOSConnection implements IDeviceConnection {
       return;
     }
 
-    // Map Android keycodes to WDA buttons
+    // Handle gesture-based "buttons" for iOS (keycodes that trigger swipe gestures)
+    // BACK = 4: swipe from left edge to right (native iOS back gesture)
+    if (keycode === 4) {
+      this.wdaClient.performBackGesture();
+      return;
+    }
+
+    // RECENTS/APP_SWITCH = 187: swipe up from bottom and hold (native iOS app switcher gesture)
+    if (keycode === 187) {
+      this.wdaClient.performAppSwitcherGesture();
+      return;
+    }
+
+    // Map Android keycodes to WDA hardware buttons
     // HOME = 3, VOLUME_UP = 24, VOLUME_DOWN = 25
     const buttonMap: Record<number, 'home' | 'volumeUp' | 'volumeDown'> = {
       3: 'home',

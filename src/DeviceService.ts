@@ -671,6 +671,11 @@ export class DeviceService {
     connection.onStatus = (status) => this.statusCallback(session.deviceId, status);
     connection.onError = (error) => this.handleDisconnect(session, error);
 
+    // Wire up capabilities change callback (for WDA connection status)
+    connection.onCapabilitiesChanged = (capabilities) => {
+      this.appState.updateDevice(session.deviceId, { capabilities });
+    };
+
     session.connection = connection;
 
     try {
