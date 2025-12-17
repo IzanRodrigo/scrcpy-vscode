@@ -218,24 +218,50 @@ build_wda() {
     print_info "If prompted, unlock your device and trust the developer certificate"
     echo ""
 
-    # Build for testing
+    # Build for testing - capture output and exit code
+    local build_log
+    build_log=$(mktemp)
+
     if xcodebuild build-for-testing \
         -project WebDriverAgent.xcodeproj \
         -scheme WebDriverAgentRunner \
         -destination "id=$DEVICE_UDID" \
-        -allowProvisioningUpdates \
-        CODE_SIGN_IDENTITY="" \
-        CODE_SIGNING_REQUIRED=YES \
-        CODE_SIGNING_ALLOWED=YES 2>&1 | while read -r line; do
-            if [[ "$line" == *"error:"* ]]; then
-                print_error "$line"
-            elif [[ "$line" == *"BUILD SUCCEEDED"* ]]; then
-                print_success "Build succeeded!"
-            fi
-        done; then
-        print_success "WebDriverAgent built successfully!"
+        -allowProvisioningUpdates 2>&1 | tee "$build_log"; then
+
+        # Check if build actually succeeded (xcodebuild can return 0 even with errors)
+        if grep -q "BUILD SUCCEEDED" "$build_log"; then
+            print_success "WebDriverAgent built successfully!"
+            rm -f "$build_log"
+        else
+            print_error "Build completed but may have issues. Check output above."
+            rm -f "$build_log"
+            exit 1
+        fi
     else
-        print_error "Build failed. Please check the Xcode signing configuration."
+        echo ""
+        print_error "Build failed!"
+        echo ""
+
+        # Check for common errors and provide guidance
+        if grep -q "code signing identity" "$build_log" || grep -q "Signing for" "$build_log"; then
+            print_warning "Code signing error detected."
+            echo ""
+            echo -e "${BOLD}Please ensure in Xcode:${NC}"
+            echo "  1. Select 'WebDriverAgentRunner' target"
+            echo "  2. Go to 'Signing & Capabilities' tab"
+            echo "  3. Check 'Automatically manage signing'"
+            echo "  4. Select a valid Team (your Apple ID)"
+            echo "  5. If bundle ID conflicts, change it to something unique"
+            echo "     e.g., com.yourname.WebDriverAgentRunner"
+            echo ""
+            echo "  Also do the same for 'IntegrationApp' target!"
+        fi
+
+        if grep -q "device is locked" "$build_log"; then
+            print_warning "Device is locked. Please unlock your iPhone and try again."
+        fi
+
+        rm -f "$build_log"
         exit 1
     fi
 }

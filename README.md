@@ -140,7 +140,7 @@ See [Troubleshooting Guide](docs/troubleshooting.md) for common issues.
 
 ### Android
 
-- VS Code 1.85.0+
+- VS Code 1.85.0+P
 - ADB installed
 - scrcpy installed
 
