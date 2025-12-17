@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execFile, spawn } from 'child_process';
 import { MockChildProcess, resetMocks as resetChildProcessMocks } from '../mocks/child_process';
-import { MockSocket, resetMocks as resetNetMocks } from '../mocks/net';
+import { MockSocket, MockServer, createServer, resetMocks as resetNetMocks } from '../mocks/net';
 
 // Mock modules before importing ScrcpyConnection
 vi.mock('child_process', () => import('../mocks/child_process'));
@@ -11,6 +11,7 @@ vi.mock('vscode', () => import('../mocks/vscode'));
 // Import after mocks are set up
 import { ScrcpyConnection, ScrcpyConfig } from '../../src/ScrcpyConnection';
 import { ControlMessageType, MotionEventAction, KeyAction } from '../../src/ScrcpyProtocol';
+import { nextTick } from '../helpers/protocol';
 
 describe('ScrcpyConnection', () => {
   let connection: ScrcpyConnection;
@@ -1294,6 +1295,300 @@ describe('ScrcpyConnection', () => {
         expect.any(Object),
         expect.any(Function)
       );
+    });
+  });
+
+  describe('Socket Connection Setup', () => {
+    /**
+     * Helper to setup common mocks for socket connection tests
+     */
+    function setupConnectionMocks() {
+      vi.mocked(execFile).mockImplementation(
+        (
+          _file: string,
+          args: string[],
+          optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+          if (args.includes('--version')) {
+            cb?.(null, 'scrcpy 2.4\n', '');
+            return new MockChildProcess();
+          }
+          if (args.includes('devices')) {
+            cb?.(null, 'List of devices attached\nemulator-5554\tdevice\n', '');
+            return new MockChildProcess();
+          }
+          cb?.(null, '', '');
+          return new MockChildProcess();
+        }
+      );
+
+      vi.mocked(spawn).mockReturnValue(new MockChildProcess() as ReturnType<typeof spawn>);
+    }
+
+    it('should select port in valid range (27183-27198)', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      // Start but don't await - we just want to check the port
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      // Check listen was called with a port in valid range
+      expect(mockServer.listen).toHaveBeenCalled();
+      const listenCall = mockServer.listen.mock.calls[0];
+      const port = listenCall[0] as number;
+      expect(port).toBeGreaterThanOrEqual(27183);
+      expect(port).toBeLessThan(27199);
+
+      // Complete the connection to clean up
+      mockServer.simulateConnection();
+      mockServer.simulateConnection();
+      await nextTick();
+      await startPromise.catch(() => {}); // Suppress errors
+    });
+
+    it('should expect 2 sockets when audio is disabled', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      // Simulate only 2 connections (video + control)
+      mockServer.simulateConnection(); // video
+      mockServer.simulateConnection(); // control
+      await nextTick();
+
+      // Should resolve
+      await startPromise;
+      expect((connection as unknown as { isConnected: boolean }).isConnected).toBe(true);
+    });
+
+    it('should handle server error before connections', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      // Simulate server error
+      mockServer.simulateError(new Error('EADDRINUSE: address already in use'));
+      await nextTick();
+
+      await expect(startPromise).rejects.toThrow(/EADDRINUSE/);
+    });
+
+    it('should receive sockets in correct order: video, control', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      // Simulate connections in order
+      mockServer.simulateConnection(); // video
+      const controlSocket = mockServer.simulateConnection(); // control
+      await nextTick();
+      await startPromise;
+
+      // Verify control socket is the one stored
+      const conn = connection as unknown as { controlSocket: MockSocket };
+      expect(conn.controlSocket).toBe(controlSocket);
+    });
+
+    it('should call status callback during connection setup', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      expect(statusCallback).toHaveBeenCalledWith(expect.stringContaining('Starting'));
+
+      mockServer.simulateConnection();
+      mockServer.simulateConnection();
+      await nextTick();
+      await startPromise;
+
+      expect(statusCallback).toHaveBeenCalledWith(expect.stringContaining('Connected'));
+    });
+
+    it('should handle scrcpy process error during connection', async () => {
+      const mockProcess = new MockChildProcess();
+      vi.mocked(execFile).mockImplementation(
+        (
+          _file: string,
+          args: string[],
+          optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+          if (args.includes('--version')) {
+            cb?.(null, 'scrcpy 2.4\n', '');
+            return new MockChildProcess();
+          }
+          if (args.includes('devices')) {
+            cb?.(null, 'List of devices attached\nemulator-5554\tdevice\n', '');
+            return new MockChildProcess();
+          }
+          cb?.(null, '', '');
+          return new MockChildProcess();
+        }
+      );
+
+      vi.mocked(spawn).mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      // Simulate process error
+      mockProcess.emit('error', new Error('spawn ENOENT'));
+      await nextTick();
+
+      await expect(startPromise).rejects.toThrow(/Failed to start scrcpy server/);
+    });
+
+    it('should handle scrcpy process exit during connection', async () => {
+      const mockProcess = new MockChildProcess();
+      vi.mocked(execFile).mockImplementation(
+        (
+          _file: string,
+          args: string[],
+          optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+          if (args.includes('--version')) {
+            cb?.(null, 'scrcpy 2.4\n', '');
+            return new MockChildProcess();
+          }
+          if (args.includes('devices')) {
+            cb?.(null, 'List of devices attached\nemulator-5554\tdevice\n', '');
+            return new MockChildProcess();
+          }
+          cb?.(null, '', '');
+          return new MockChildProcess();
+        }
+      );
+
+      vi.mocked(spawn).mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      // Simulate process exit before connection completes
+      mockProcess.emit('exit', 1);
+      await nextTick();
+
+      await expect(startPromise).rejects.toThrow(/exited with code/);
+    });
+  });
+
+  describe('Socket Error Handling', () => {
+    function setupConnectionMocks() {
+      vi.mocked(execFile).mockImplementation(
+        (
+          _file: string,
+          args: string[],
+          optionsOrCallback?: unknown,
+          callback?: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+          if (args.includes('--version')) {
+            cb?.(null, 'scrcpy 2.4\n', '');
+            return new MockChildProcess();
+          }
+          if (args.includes('devices')) {
+            cb?.(null, 'List of devices attached\nemulator-5554\tdevice\n', '');
+            return new MockChildProcess();
+          }
+          cb?.(null, '', '');
+          return new MockChildProcess();
+        }
+      );
+
+      vi.mocked(spawn).mockReturnValue(new MockChildProcess() as ReturnType<typeof spawn>);
+    }
+
+    it('should handle video socket error after connection', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      const videoSocket = mockServer.simulateConnection();
+      mockServer.simulateConnection(); // control
+      await nextTick();
+      await startPromise;
+
+      // Simulate video socket error - should not throw
+      expect(() => videoSocket.simulateError(new Error('Connection reset'))).not.toThrow();
+    });
+
+    it('should handle video socket close after connection', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      const videoSocket = mockServer.simulateConnection();
+      mockServer.simulateConnection(); // control
+      await nextTick();
+      await startPromise;
+
+      // Simulate video socket close - should handle gracefully
+      expect(() => videoSocket.simulateClose()).not.toThrow();
+    });
+
+    it('should handle control socket close during session', async () => {
+      setupConnectionMocks();
+      const mockServer = new MockServer();
+      vi.mocked(createServer).mockReturnValue(mockServer);
+      (connection as unknown as { deviceSerial: string }).deviceSerial = 'emulator-5554';
+
+      const startPromise = connection.startScrcpy();
+      await nextTick();
+
+      mockServer.simulateConnection(); // video
+      const controlSocket = mockServer.simulateConnection();
+      await nextTick();
+      await startPromise;
+
+      // Close control socket
+      controlSocket.simulateClose();
+
+      // Subsequent commands should not crash
+      expect(() => connection.rotateDevice()).not.toThrow();
     });
   });
 });
