@@ -184,20 +184,30 @@ export class WDAClient {
   }
 
   /**
-   * Perform a tap at the specified coordinates
+   * Perform a tap at the specified coordinates using W3C Actions API
    */
   private async performTap(sessionId: string, x: number, y: number): Promise<void> {
-    const actions: WDATouchAction[] = [
-      { action: 'tap', options: { x: Math.round(x), y: Math.round(y) } },
-    ];
+    const actions = {
+      actions: [
+        {
+          type: 'pointer',
+          id: 'finger1',
+          parameters: { pointerType: 'touch' },
+          actions: [
+            { type: 'pointerMove', duration: 0, x: Math.round(x), y: Math.round(y) },
+            { type: 'pointerDown', button: 0 },
+            { type: 'pause', duration: 50 },
+            { type: 'pointerUp', button: 0 },
+          ],
+        },
+      ],
+    };
 
-    await this.request('POST', `/session/${sessionId}/wda/touch/perform`, {
-      actions,
-    });
+    await this.request('POST', `/session/${sessionId}/actions`, actions);
   }
 
   /**
-   * Perform a swipe gesture
+   * Perform a swipe gesture using W3C Actions API
    */
   private async performSwipe(
     sessionId: string,
@@ -207,32 +217,57 @@ export class WDAClient {
     endY: number,
     durationMs: number = 200
   ): Promise<void> {
-    const actions: WDATouchAction[] = [
-      { action: 'press', options: { x: Math.round(startX), y: Math.round(startY) } },
-      { action: 'wait', options: { ms: durationMs } },
-      { action: 'moveTo', options: { x: Math.round(endX), y: Math.round(endY) } },
-      { action: 'release' },
-    ];
+    const actions = {
+      actions: [
+        {
+          type: 'pointer',
+          id: 'finger1',
+          parameters: { pointerType: 'touch' },
+          actions: [
+            { type: 'pointerMove', duration: 0, x: Math.round(startX), y: Math.round(startY) },
+            { type: 'pointerDown', button: 0 },
+            { type: 'pointerMove', duration: durationMs, x: Math.round(endX), y: Math.round(endY) },
+            { type: 'pointerUp', button: 0 },
+          ],
+        },
+      ],
+    };
 
-    await this.request('POST', `/session/${sessionId}/wda/touch/perform`, {
-      actions,
-    });
+    await this.request('POST', `/session/${sessionId}/actions`, actions);
   }
 
   /**
-   * Send scroll gesture
-   * Converts scroll delta to a swipe gesture
+   * Send scroll gesture using WDA's native scroll endpoint
    */
-  async scroll(x: number, y: number, deltaX: number, deltaY: number): Promise<void> {
+  async scroll(_x: number, _y: number, deltaX: number, deltaY: number): Promise<void> {
     const sessionId = await this.ensureSession();
 
-    // Convert scroll deltas to swipe coordinates
-    // Scale factor to make scrolling feel natural
-    const scrollScale = 50;
-    const endX = x - deltaX * scrollScale;
-    const endY = y - deltaY * scrollScale;
+    // Determine scroll direction and distance
+    // WDA scroll uses direction (up/down/left/right) and distance (0-1 fraction of screen)
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
 
-    await this.performSwipe(sessionId, x, y, endX, endY, 100);
+    // Scroll in the dominant direction
+    if (absY >= absX && absY > 0.001) {
+      // Vertical scroll - WDA "up" scrolls content up (shows content below)
+      // Our deltaY > 0 means scroll wheel down = content should scroll up
+      const direction = deltaY > 0 ? 'up' : 'down';
+      const distance = Math.min(0.5, absY * 2); // Scale and cap at 50% of screen
+
+      await this.request('POST', `/session/${sessionId}/wda/scroll`, {
+        direction,
+        distance,
+      });
+    } else if (absX > 0.001) {
+      // Horizontal scroll
+      const direction = deltaX > 0 ? 'left' : 'right';
+      const distance = Math.min(0.5, absX * 2);
+
+      await this.request('POST', `/session/${sessionId}/wda/scroll`, {
+        direction,
+        distance,
+      });
+    }
   }
 
   /**

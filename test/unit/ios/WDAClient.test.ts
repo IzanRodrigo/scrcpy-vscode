@@ -186,10 +186,10 @@ describe('WDAClient', () => {
       await touchPromise;
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8100/session/touch-session/wda/touch/perform',
+        'http://localhost:8100/session/touch-session/actions',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"action":"tap"'),
+          body: expect.stringContaining('"type":"pointer"'),
         })
       );
     });
@@ -209,10 +209,10 @@ describe('WDAClient', () => {
       await touchPromise;
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8100/session/touch-session/wda/touch/perform',
+        'http://localhost:8100/session/touch-session/actions',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"action":"press"'),
+          body: expect.stringContaining('"pointerDown"'),
         })
       );
     });
@@ -230,20 +230,21 @@ describe('WDAClient', () => {
       mockFetch.mockClear();
     });
 
-    it('should convert scroll to swipe gesture', async () => {
+    it('should use WDA native scroll endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ value: null }),
       });
 
-      const scrollPromise = client.scroll(200, 300, 0, -5);
+      const scrollPromise = client.scroll(200, 300, 0, -0.5);
       await vi.runAllTimersAsync();
       await scrollPromise;
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/wda/touch/perform'),
+        expect.stringContaining('/wda/scroll'),
         expect.objectContaining({
           method: 'POST',
+          body: expect.stringContaining('"direction"'),
         })
       );
     });

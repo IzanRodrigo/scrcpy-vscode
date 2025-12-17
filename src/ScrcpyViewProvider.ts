@@ -459,7 +459,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           this._deviceService &&
           message.x !== undefined &&
           message.y !== undefined &&
-          message.action
+          message.action !== undefined
         ) {
           this._deviceService.sendTouch(
             message.x,
@@ -490,7 +490,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
           message.y1 !== undefined &&
           message.x2 !== undefined &&
           message.y2 !== undefined &&
-          message.action
+          message.action !== undefined
         ) {
           this._deviceService.sendMultiTouch(
             message.x1,

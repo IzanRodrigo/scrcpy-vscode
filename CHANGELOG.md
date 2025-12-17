@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed WDA touch coordinates when video dimensions differ from device screen (window capture mode)
   - Now fetches actual device screen size from WDA for accurate touch mapping
 - Removed dead code (`getIOSDevicesFromContinuityCamera`) superseded by window capture fallback
+- **Fixed iOS touch events not being sent** - Touch down action (action=0) was incorrectly filtered due to JavaScript falsy check
+- **Updated WDA client to use W3C Actions API** - Migrated from legacy `/wda/touch/perform` endpoint to standard W3C WebDriver Actions API (`/actions`) for tap and swipe gestures
+- **Improved iOS scroll performance** - Now uses WDA's native `/wda/scroll` endpoint with direction/distance instead of slow swipe gestures
 
 ### Known Issues
 
