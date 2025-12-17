@@ -930,8 +930,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .toggle-switch.active {
-      background: var(--vscode-button-background, #0078d4);
-      border-color: var(--vscode-button-background, #0078d4);
+      background: var(--vscode-focusBorder, #0078d4);
+      border-color: var(--vscode-focusBorder, #0078d4);
     }
 
     .toggle-switch.active::after {
@@ -974,7 +974,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .segment-btn.active {
-      background: var(--vscode-button-background, #0078d4);
+      background: var(--vscode-focusBorder, #0078d4);
       color: var(--vscode-button-foreground, white);
     }
 
@@ -1004,12 +1004,19 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       outline: none;
     }
 
+    .settings-slider::-webkit-slider-runnable-track {
+      height: 4px;
+      background: var(--vscode-input-background, #3c3c3c);
+      border-radius: 2px;
+    }
+
     .settings-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
       width: 14px;
       height: 14px;
-      background: var(--vscode-button-background, #0078d4);
+      margin-top: -5px;
+      background: var(--vscode-focusBorder, #0078d4);
       border-radius: 50%;
       cursor: pointer;
       transition: transform 0.1s;
@@ -1019,10 +1026,16 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       transform: scale(1.15);
     }
 
+    .settings-slider::-moz-range-track {
+      height: 4px;
+      background: var(--vscode-input-background, #3c3c3c);
+      border-radius: 2px;
+    }
+
     .settings-slider::-moz-range-thumb {
       width: 14px;
       height: 14px;
-      background: var(--vscode-button-background, #0078d4);
+      background: var(--vscode-focusBorder, #0078d4);
       border: none;
       border-radius: 50%;
       cursor: pointer;
