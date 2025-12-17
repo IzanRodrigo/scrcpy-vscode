@@ -1716,16 +1716,17 @@ function updateTooltipContent(serial: string, info: DeviceDetailedInfo) {
   // Build tooltip content
   let content = '<div class="device-info-content">';
 
-  // Platform icon and manufacturer/model on same row
+  // Phone emoji and manufacturer/model on header row
   const platformIcon = getPlatformIcon(platform);
   if (manufacturer && model) {
-    content += `<div class="info-row info-row-header">${platformIcon}<strong>${escapeHtml(manufacturer)} ${escapeHtml(model)}</strong></div>`;
+    content += `<div class="info-row info-row-header">📱 <strong>${escapeHtml(manufacturer)} ${escapeHtml(model)}</strong></div>`;
   } else {
-    content += `<div class="info-row info-row-header">${platformIcon}<strong>${platform === 'ios' ? 'iOS Device' : 'Android Device'}</strong></div>`;
+    content += `<div class="info-row info-row-header">📱 <strong>${platform === 'ios' ? 'iOS Device' : 'Android Device'}</strong></div>`;
   }
 
+  // Platform icon next to OS version
   if (androidVersion) {
-    content += `<div class="info-row">${platform === 'ios' ? 'iOS' : 'Android'} ${escapeHtml(androidVersion)}`;
+    content += `<div class="info-row info-row-platform">${platformIcon}${platform === 'ios' ? 'iOS' : 'Android'} ${escapeHtml(androidVersion)}`;
     if (sdkVersion) {
       content += ` (SDK ${sdkVersion})`;
     }

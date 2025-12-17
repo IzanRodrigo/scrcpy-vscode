@@ -2,6 +2,12 @@
 'use strict';
 
 const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
+const fs = require('fs');
+
+// Check if ios-helper binary exists (only on macOS)
+const iosHelperPath = path.resolve(__dirname, 'native/ios-helper/.build/release/ios-helper');
+const iosHelperExists = fs.existsSync(iosHelperPath);
 
 /** @type {import('webpack').Configuration} */
 const extensionConfig = {
@@ -28,6 +34,18 @@ const extensionConfig = {
       },
     ],
   },
+  plugins: iosHelperExists
+    ? [
+        new CopyPlugin({
+          patterns: [
+            {
+              from: 'native/ios-helper/.build/release/ios-helper',
+              to: 'ios-helper',
+            },
+          ],
+        }),
+      ]
+    : [],
   devtool: 'nosources-source-map',
   infrastructureLogging: {
     level: 'log',

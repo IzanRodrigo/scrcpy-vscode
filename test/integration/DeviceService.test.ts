@@ -8,6 +8,14 @@ vi.mock('child_process', () => import('../mocks/child_process'));
 // Mock vscode module
 vi.mock('vscode', () => import('../mocks/vscode'));
 
+// Mock iOS module to prevent actual device enumeration in tests
+vi.mock('../../src/ios', () => ({
+  iOSConnection: vi.fn(),
+  iOSDeviceManager: {
+    getAvailableDevices: vi.fn().mockResolvedValue([]),
+  },
+}));
+
 // Import after mocks are set up
 import { DeviceService } from '../../src/DeviceService';
 import { AppStateManager } from '../../src/AppStateManager';

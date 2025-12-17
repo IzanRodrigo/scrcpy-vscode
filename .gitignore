@@ -34,3 +34,6 @@ Thumbs.db
 # Gemini
 .gemini-clipboard/
 .gemini/
+
+# Swift build artifacts
+native/ios-helper/.build/

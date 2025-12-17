@@ -17,7 +17,8 @@ import {
 import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
 import { AppStateManager } from './AppStateManager';
 import { DeviceInfo, DeviceDetailedInfo, ConnectionState, VideoCodec } from './types/AppState';
-import { getCapabilities } from './PlatformCapabilities';
+import { getCapabilities, isIOSSupportAvailable } from './PlatformCapabilities';
+import { iOSConnection, iOSDeviceManager } from './ios';
 
 // Re-export types for backward compatibility
 export type { DeviceInfo, DeviceDetailedInfo, ConnectionState };
@@ -56,7 +57,7 @@ export type ErrorCallback = (deviceId: string, message: string, error?: Error) =
 interface DeviceSession {
   deviceId: string;
   deviceInfo: DeviceInfo;
-  connection: ScrcpyConnection | null;
+  connection: ScrcpyConnection | iOSConnection | null;
   isPaused: boolean;
   retryCount: number;
   isReconnecting: boolean;
@@ -122,9 +123,29 @@ export class DeviceService {
   }
 
   /**
-   * Get list of available ADB devices (excludes mDNS devices for cleaner UI)
+   * Get list of available devices (Android via ADB + iOS via CoreMediaIO on macOS)
    */
   async getAvailableDevices(): Promise<DeviceInfo[]> {
+    // Get Android devices
+    const androidDevices = await this.getAndroidDevices();
+
+    // Get iOS devices if on macOS
+    let iosDevices: DeviceInfo[] = [];
+    if (isIOSSupportAvailable()) {
+      try {
+        iosDevices = await iOSDeviceManager.getAvailableDevices();
+      } catch (error) {
+        console.error('Failed to get iOS devices:', error);
+      }
+    }
+
+    return [...androidDevices, ...iosDevices];
+  }
+
+  /**
+   * Get list of available ADB devices (excludes mDNS devices for cleaner UI)
+   */
+  private async getAndroidDevices(): Promise<DeviceInfo[]> {
     const adbCmd = this.getAdbCommand();
     return new Promise((resolve) => {
       execFile(adbCmd, ['devices', '-l'], (error, stdout) => {
@@ -570,13 +591,78 @@ export class DeviceService {
   }
 
   /**
-   * Connect a session with codec fallback
+   * Connect a session (routes to platform-specific connection handler)
    */
   private async connectSession(session: DeviceSession): Promise<void> {
     // Update state to connecting
     this.appState.updateDeviceConnectionState(session.deviceId, 'connecting');
 
-    await this.connectWithCodecFallback(session);
+    if (session.deviceInfo.platform === 'ios') {
+      await this.connectiOSSession(session);
+    } else {
+      await this.connectWithCodecFallback(session);
+    }
+  }
+
+  /**
+   * Connect an iOS device session
+   */
+  private async connectiOSSession(session: DeviceSession): Promise<void> {
+    const connection = new iOSConnection(session.deviceInfo.serial);
+
+    // Wire up video frame callback
+    connection.onVideoFrame = (data, isConfig, isKeyFrame, width, height, codec) => {
+      // Store dimensions, config data, and codec for replay on resume
+      if (width && height) {
+        session.lastWidth = width;
+        session.lastHeight = height;
+        this.appState.updateDeviceVideoDimensions(
+          session.deviceId,
+          width,
+          height,
+          codec as VideoCodec | undefined
+        );
+      }
+      if (codec) {
+        session.lastCodec = codec;
+      }
+      if (isConfig && data.length > 0) {
+        session.lastConfigData = data;
+      }
+      if (isKeyFrame && data.length > 0) {
+        session.lastKeyFrameData = data;
+      }
+
+      // Only forward frames if not paused
+      if (!session.isPaused) {
+        this.videoFrameCallback(session.deviceId, data, isConfig, isKeyFrame, width, height, codec);
+      }
+    };
+
+    // Wire up status and error callbacks
+    connection.onStatus = (status) => this.statusCallback(session.deviceId, status);
+    connection.onError = (error) => this.handleDisconnect(session, error);
+
+    session.connection = connection;
+
+    try {
+      await connection.connect(session.deviceInfo.serial);
+      await connection.startStreaming({});
+
+      // Reset retry count on successful connection
+      session.retryCount = 0;
+
+      // Update state to connected
+      this.appState.updateDeviceConnectionState(session.deviceId, 'connected');
+
+      // Clear any loading status message
+      this.appState.clearStatusMessage();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.appState.updateDeviceConnectionState(session.deviceId, 'disconnected');
+      this.errorCallback(session.deviceId, message, error instanceof Error ? error : undefined);
+      throw error;
+    }
   }
 
   /**
@@ -888,6 +974,23 @@ export class DeviceService {
 
   // ==================== Device Control Methods ====================
 
+  /**
+   * Type guard to check if connection is a ScrcpyConnection (Android)
+   */
+  private isScrcpyConnection(
+    connection: ScrcpyConnection | iOSConnection | null
+  ): connection is ScrcpyConnection {
+    return connection !== null && connection.platform === 'android';
+  }
+
+  /**
+   * Get active Android connection (returns null for iOS devices)
+   */
+  private getActiveAndroidConnection(): ScrcpyConnection | null {
+    const connection = this.getActiveSession()?.connection ?? null;
+    return this.isScrcpyConnection(connection) ? connection : null;
+  }
+
   sendTouch(
     x: number,
     y: number,
@@ -895,7 +998,7 @@ export class DeviceService {
     screenWidth: number,
     screenHeight: number
   ): void {
-    this.getActiveSession()?.connection?.sendTouch(x, y, action, screenWidth, screenHeight);
+    this.getActiveAndroidConnection()?.sendTouch(x, y, action, screenWidth, screenHeight);
   }
 
   sendMultiTouch(
@@ -907,7 +1010,7 @@ export class DeviceService {
     screenWidth: number,
     screenHeight: number
   ): void {
-    this.getActiveSession()?.connection?.sendMultiTouch(
+    this.getActiveAndroidConnection()?.sendMultiTouch(
       x1,
       y1,
       x2,
@@ -919,52 +1022,55 @@ export class DeviceService {
   }
 
   sendKeyDown(keycode: number): void {
-    this.getActiveSession()?.connection?.sendKeyDown(keycode);
+    this.getActiveAndroidConnection()?.sendKeyDown(keycode);
   }
 
   sendKeyUp(keycode: number): void {
-    this.getActiveSession()?.connection?.sendKeyUp(keycode);
+    this.getActiveAndroidConnection()?.sendKeyUp(keycode);
   }
 
   sendText(text: string): void {
-    this.getActiveSession()?.connection?.sendText(text);
+    this.getActiveAndroidConnection()?.sendText(text);
   }
 
   sendKeyWithMeta(keycode: number, action: 'down' | 'up', metastate: number): void {
-    this.getActiveSession()?.connection?.sendKeyWithMeta(keycode, action, metastate);
+    this.getActiveAndroidConnection()?.sendKeyWithMeta(keycode, action, metastate);
   }
 
   sendScroll(x: number, y: number, deltaX: number, deltaY: number): void {
-    this.getActiveSession()?.connection?.sendScroll(x, y, deltaX, deltaY);
+    this.getActiveAndroidConnection()?.sendScroll(x, y, deltaX, deltaY);
   }
 
   updateDimensions(deviceId: string, width: number, height: number): void {
     const session = this.sessions.get(deviceId);
-    session?.connection?.updateDimensions(width, height);
+    const connection = session?.connection ?? null;
+    if (this.isScrcpyConnection(connection)) {
+      connection.updateDimensions(width, height);
+    }
   }
 
   async pasteFromHost(): Promise<void> {
-    await this.getActiveSession()?.connection?.pasteFromHost();
+    await this.getActiveAndroidConnection()?.pasteFromHost();
   }
 
   async copyToHost(): Promise<void> {
-    await this.getActiveSession()?.connection?.copyToHost();
+    await this.getActiveAndroidConnection()?.copyToHost();
   }
 
   rotateDevice(): void {
-    this.getActiveSession()?.connection?.rotateDevice();
+    this.getActiveAndroidConnection()?.rotateDevice();
   }
 
   expandNotificationPanel(): void {
-    this.getActiveSession()?.connection?.expandNotificationPanel();
+    this.getActiveAndroidConnection()?.expandNotificationPanel();
   }
 
   expandSettingsPanel(): void {
-    this.getActiveSession()?.connection?.expandSettingsPanel();
+    this.getActiveAndroidConnection()?.expandSettingsPanel();
   }
 
   collapsePanels(): void {
-    this.getActiveSession()?.connection?.collapsePanels();
+    this.getActiveAndroidConnection()?.collapsePanels();
   }
 
   async takeScreenshot(): Promise<Buffer> {
@@ -972,57 +1078,63 @@ export class DeviceService {
     if (!session?.connection) {
       throw new Error(vscode.l10n.t('No active device'));
     }
-    return session.connection.takeScreenshot();
+    const connection = session.connection;
+    if (this.isScrcpyConnection(connection)) {
+      return connection.takeScreenshot();
+    }
+    // iOS screenshot not yet implemented
+    throw new Error(vscode.l10n.t('Screenshot not supported for iOS devices'));
   }
 
   async listCameras(): Promise<string> {
-    const session = this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = this.getActiveAndroidConnection();
+    if (!connection) {
+      throw new Error(vscode.l10n.t('No active Android device'));
     }
-    return session.connection.listCameras();
+    return connection.listCameras();
   }
 
   async installApk(filePath: string): Promise<void> {
-    const session = this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = this.getActiveAndroidConnection();
+    if (!connection) {
+      throw new Error(vscode.l10n.t('APK installation is only supported on Android devices'));
     }
-    await session.connection.installApk(filePath);
+    await connection.installApk(filePath);
   }
 
   async pushFiles(filePaths: string[], destPath?: string): Promise<void> {
-    const session = this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = this.getActiveAndroidConnection();
+    if (!connection) {
+      throw new Error(vscode.l10n.t('File upload is only supported on Android devices'));
     }
-    await session.connection.pushFiles(filePaths, destPath);
+    await connection.pushFiles(filePaths, destPath);
   }
 
   launchApp(packageName: string): void {
-    const session = this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = this.getActiveAndroidConnection();
+    if (!connection) {
+      throw new Error(vscode.l10n.t('App launch is only supported on Android devices'));
     }
-    session.connection.startApp(packageName);
+    connection.startApp(packageName);
   }
 
   async getInstalledApps(
     thirdPartyOnly: boolean = false
   ): Promise<Array<{ packageName: string; label: string }>> {
-    const session = this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = this.getActiveAndroidConnection();
+    if (!connection) {
+      throw new Error(vscode.l10n.t('No active Android device'));
     }
-    return session.connection.getInstalledApps(thirdPartyOnly);
+    return connection.getInstalledApps(thirdPartyOnly);
   }
 
   async getDisplays(deviceId?: string): Promise<Array<{ id: number; info: string }>> {
     const session = deviceId ? this.sessions.get(deviceId) : this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = session?.connection ?? null;
+    if (!this.isScrcpyConnection(connection)) {
+      throw new Error(vscode.l10n.t('No active Android device'));
     }
-    return session.connection.listDisplays();
+    return connection.listDisplays();
   }
 
   // ==================== Session Management ====================

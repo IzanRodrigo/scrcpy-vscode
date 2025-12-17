@@ -344,11 +344,16 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       margin-bottom: 4px;
     }
 
-    .device-info-tooltip .info-row-header .tab-platform-icon {
-      width: 16px;
-      height: 16px;
-      opacity: 0.9;
-      margin-right: 0;
+    .device-info-tooltip .info-row-platform {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .device-info-tooltip .info-row-platform .tab-platform-icon {
+      width: 14px;
+      height: 14px;
+      opacity: 0.85;
     }
 
     .device-info-tooltip .info-row-bottom {

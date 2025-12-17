@@ -77,6 +77,9 @@ export interface ClipboardAPI {
  * to mirror Android device screen.
  */
 export class ScrcpyConnection {
+  /** Platform type for this connection */
+  readonly platform = 'android' as const;
+
   private deviceSerial: string | null = null;
   private targetSerial: string | null = null;
   private videoSocket: net.Socket | null = null;

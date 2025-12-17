@@ -1,0 +1,230 @@
+import Foundation
+import AVFoundation
+
+/// Message types for the binary protocol
+enum MessageType: UInt8 {
+    case deviceList = 0x01
+    case deviceInfo = 0x02
+    case videoConfig = 0x03
+    case videoFrame = 0x04
+    case error = 0x05
+    case status = 0x06
+}
+
+/// Writes binary messages to stdout following the protocol format
+class MessageWriter {
+
+    private static let stdout = FileHandle.standardOutput
+
+    /// Write a message to stdout
+    static func write(type: MessageType, payload: Data) {
+        var message = Data()
+
+        // Type (1 byte)
+        message.append(type.rawValue)
+
+        // Length (4 bytes big-endian)
+        var length = UInt32(payload.count).bigEndian
+        message.append(Data(bytes: &length, count: 4))
+
+        // Payload
+        message.append(payload)
+
+        stdout.write(message)
+    }
+
+    /// Write an error message
+    static func writeError(_ message: String) {
+        write(type: .error, payload: message.data(using: .utf8) ?? Data())
+    }
+
+    /// Write a status message
+    static func writeStatus(_ message: String) {
+        write(type: .status, payload: message.data(using: .utf8) ?? Data())
+    }
+
+    /// Write device list as JSON
+    static func writeDeviceList(_ devices: [IOSDeviceInfo]) {
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(devices) {
+            write(type: .deviceList, payload: data)
+        }
+    }
+
+    /// Write video config (SPS/PPS with dimensions)
+    static func writeVideoConfig(width: Int, height: Int, configData: Data) {
+        var payload = Data()
+
+        // Width (4 bytes big-endian)
+        var w = UInt32(width).bigEndian
+        payload.append(Data(bytes: &w, count: 4))
+
+        // Height (4 bytes big-endian)
+        var h = UInt32(height).bigEndian
+        payload.append(Data(bytes: &h, count: 4))
+
+        // Config data (SPS/PPS in Annex B format)
+        payload.append(configData)
+
+        write(type: .videoConfig, payload: payload)
+    }
+
+    /// Write video frame
+    static func writeVideoFrame(data: Data, isKeyFrame: Bool, isConfig: Bool, pts: UInt64) {
+        var payload = Data()
+
+        // Flags (1 byte)
+        var flags: UInt8 = 0
+        if isKeyFrame { flags |= 0x01 }
+        if isConfig { flags |= 0x02 }
+        payload.append(flags)
+
+        // PTS (8 bytes big-endian)
+        var ptsValue = pts.bigEndian
+        payload.append(Data(bytes: &ptsValue, count: 8))
+
+        // Frame data
+        payload.append(data)
+
+        write(type: .videoFrame, payload: payload)
+    }
+}
+
+/// Main application for iOS screen capture
+class IOSHelperApp: ScreenCaptureDelegate {
+
+    private var screenCapture: ScreenCapture?
+    private var frameEncoder: FrameEncoder?
+    private var frameCount: UInt64 = 0
+
+    /// List connected iOS devices
+    func listDevices() {
+        MessageWriter.writeStatus("Scanning for iOS devices...")
+
+        let devices = DeviceEnumerator.getIOSDevices()
+
+        if devices.isEmpty {
+            MessageWriter.writeStatus("No iOS devices found. Make sure your device is connected via USB and trusted.")
+        }
+
+        MessageWriter.writeDeviceList(devices)
+    }
+
+    /// Start streaming from a specific device
+    func startStream(udid: String) {
+        MessageWriter.writeStatus("Looking for device: \(udid)")
+
+        guard let device = DeviceEnumerator.findDevice(udid: udid) else {
+            MessageWriter.writeError("Device not found: \(udid)")
+            exit(1)
+        }
+
+        MessageWriter.writeStatus("Found device: \(device.localizedName)")
+
+        // Create screen capture
+        screenCapture = ScreenCapture(device: device)
+        screenCapture?.delegate = self
+
+        do {
+            try screenCapture?.start()
+            MessageWriter.writeStatus("Capture started")
+
+            // Keep running until terminated
+            RunLoop.main.run()
+        } catch {
+            MessageWriter.writeError("Failed to start capture: \(error.localizedDescription)")
+            exit(1)
+        }
+    }
+
+    // MARK: - ScreenCaptureDelegate
+
+    func screenCapture(_ capture: ScreenCapture, didStart width: Int, height: Int) {
+        MessageWriter.writeStatus("Capturing at \(width)x\(height)")
+
+        // Initialize encoder
+        frameEncoder = FrameEncoder()
+        frameEncoder?.onEncodedFrame = { [weak self] data, isConfig, isKeyFrame, w, h in
+            if isConfig {
+                // Send video config (SPS/PPS)
+                MessageWriter.writeVideoConfig(width: w, height: h, configData: data)
+            } else {
+                // Send video frame
+                self?.frameCount += 1
+                MessageWriter.writeVideoFrame(
+                    data: data,
+                    isKeyFrame: isKeyFrame,
+                    isConfig: false,
+                    pts: self?.frameCount ?? 0
+                )
+            }
+        }
+
+        do {
+            try frameEncoder?.initialize(width: width, height: height)
+        } catch {
+            MessageWriter.writeError("Failed to initialize encoder: \(error.localizedDescription)")
+        }
+    }
+
+    func screenCapture(_ capture: ScreenCapture, didOutputVideoFrame frame: CMSampleBuffer) {
+        frameEncoder?.encode(frame)
+    }
+
+    func screenCapture(_ capture: ScreenCapture, didReceiveError error: Error) {
+        MessageWriter.writeError(error.localizedDescription)
+    }
+}
+
+// MARK: - Main Entry Point
+
+func printUsage() {
+    fputs("""
+    ios-helper - iOS Screen Capture Helper for scrcpy-vscode
+
+    Usage:
+      ios-helper list              List connected iOS devices
+      ios-helper stream <UDID>     Stream video from a specific device
+
+    The output is a binary protocol on stdout for consumption by the VS Code extension.
+
+    """, stderr)
+}
+
+func main() {
+    let args = CommandLine.arguments
+
+    guard args.count >= 2 else {
+        printUsage()
+        exit(1)
+    }
+
+    let command = args[1]
+    let app = IOSHelperApp()
+
+    switch command {
+    case "list":
+        app.listDevices()
+        exit(0)
+
+    case "stream":
+        guard args.count >= 3 else {
+            fputs("Error: stream command requires a device UDID\n", stderr)
+            printUsage()
+            exit(1)
+        }
+        let udid = args[2]
+        app.startStream(udid: udid)
+
+    case "-h", "--help", "help":
+        printUsage()
+        exit(0)
+
+    default:
+        fputs("Unknown command: \(command)\n", stderr)
+        printUsage()
+        exit(1)
+    }
+}
+
+main()
