@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Recents button available on devices with physical home button (iPhone 8, SE, older)
   - iproxy USB port forwarding for WDA connection
   - WDA status indicator in device tooltip (connected/connecting/unavailable/disabled)
+  - **Rotation control** - Rotate iOS device screen via WDA when connected
+  - **Clipboard sync** - Bidirectional clipboard sync between PC and iOS device (Ctrl+C/Ctrl+V)
+  - **App launcher** - Launch iOS apps by bundle ID, with searchable app list
 - **iOS screenshots** - Native screenshot capture via ios-helper binary
   - Uses AVFoundation single-frame capture
   - Outputs lossless PNG at device resolution
@@ -34,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `PlatformCapabilities` defines per-platform feature availability with granular button controls
   - Separate capabilities for Home, Back, Recents buttons (not a single `supportsSystemButtons`)
   - Dynamic capability updates based on WDA connection status and device model
+  - Common interface methods for rotation (`rotate`), clipboard (`pasteFromHost`, `copyToHost`), and app management (`launchApp`, `getInstalledApps`)
+  - Platform-agnostic app list format (`appId`, `displayName`) works across Android (package name) and iOS (bundle ID)
 - **iOS-specific settings**
   - `scrcpy.ios.enabled` - Enable/disable iOS device support (auto-enabled on macOS)
   - `scrcpy.ios.webDriverAgentEnabled` - Enable/disable WDA input control

@@ -1194,6 +1194,13 @@ export class ScrcpyConnection {
   }
 
   /**
+   * Rotate device (interface method - delegates to rotateDevice)
+   */
+  rotate(): void {
+    this.rotateDevice();
+  }
+
+  /**
    * Expand notification panel on device
    */
   expandNotificationPanel(): void {
@@ -1640,11 +1647,19 @@ export class ScrcpyConnection {
   }
 
   /**
-   * Get list of installed apps from device
+   * Launch app by identifier (interface method)
+   * @param appId - App identifier (package name for Android)
+   */
+  async launchApp(appId: string): Promise<void> {
+    this.startApp(appId);
+  }
+
+  /**
+   * Get list of installed apps from device (internal method with filter option)
    * @param thirdPartyOnly - If true, only list third-party apps (default: false)
    * @returns Array of app info objects with package name and label
    */
-  async getInstalledApps(
+  async getInstalledAppsFiltered(
     thirdPartyOnly: boolean = false
   ): Promise<Array<{ packageName: string; label: string }>> {
     if (!this.deviceSerial) {
@@ -1678,6 +1693,18 @@ export class ScrcpyConnection {
     apps.sort((a, b) => a.label.localeCompare(b.label));
 
     return apps;
+  }
+
+  /**
+   * Get list of installed apps (interface method)
+   * @returns Array of app info with appId and displayName
+   */
+  async getInstalledApps(): Promise<Array<{ appId: string; displayName: string }>> {
+    const apps = await this.getInstalledAppsFiltered(false);
+    return apps.map((app) => ({
+      appId: app.packageName,
+      displayName: app.label,
+    }));
   }
 
   /**

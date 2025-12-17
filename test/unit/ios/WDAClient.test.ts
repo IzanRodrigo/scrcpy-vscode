@@ -550,4 +550,238 @@ describe('WDAClient', () => {
       expect(status).toBeNull();
     });
   });
+
+  describe('rotateDevice', () => {
+    beforeEach(async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: { sessionId: 'rotate-session' } }),
+      });
+      const sessionPromise = client.createSession();
+      await vi.runAllTimersAsync();
+      await sessionPromise;
+      mockFetch.mockClear();
+    });
+
+    it('should send rotation request with default 90 degrees', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      const rotatePromise = client.rotateDevice();
+      await vi.runAllTimersAsync();
+      await rotatePromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/rotate-session/rotation',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ x: 0, y: 0, z: 90 }),
+        })
+      );
+    });
+
+    it('should send rotation request with custom degrees', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      const rotatePromise = client.rotateDevice(270);
+      await vi.runAllTimersAsync();
+      await rotatePromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/rotate-session/rotation',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ x: 0, y: 0, z: 270 }),
+        })
+      );
+    });
+  });
+
+  describe('clipboard', () => {
+    beforeEach(async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: { sessionId: 'clipboard-session' } }),
+      });
+      const sessionPromise = client.createSession();
+      await vi.runAllTimersAsync();
+      await sessionPromise;
+      mockFetch.mockClear();
+    });
+
+    it('should get clipboard content', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: 'clipboard content' }),
+      });
+
+      const clipboardPromise = client.getClipboard();
+      await vi.runAllTimersAsync();
+      const content = await clipboardPromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/clipboard-session/wda/pasteboard',
+        expect.objectContaining({
+          method: 'GET',
+        })
+      );
+      expect(content).toBe('clipboard content');
+    });
+
+    it('should return empty string when clipboard is empty', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: '' }),
+      });
+
+      const clipboardPromise = client.getClipboard();
+      await vi.runAllTimersAsync();
+      const content = await clipboardPromise;
+
+      expect(content).toBe('');
+    });
+
+    it('should set clipboard content with base64 encoding', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      const text = 'Hello, World!';
+      const base64 = Buffer.from(text, 'utf-8').toString('base64');
+
+      const setPromise = client.setClipboard(text);
+      await vi.runAllTimersAsync();
+      await setPromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/clipboard-session/wda/setPasteboard',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ content: base64, contentType: 'plaintext' }),
+        })
+      );
+    });
+
+    it('should handle unicode text correctly', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      const text = '你好世界 🌍';
+      const base64 = Buffer.from(text, 'utf-8').toString('base64');
+
+      const setPromise = client.setClipboard(text);
+      await vi.runAllTimersAsync();
+      await setPromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/wda/setPasteboard'),
+        expect.objectContaining({
+          body: JSON.stringify({ content: base64, contentType: 'plaintext' }),
+        })
+      );
+    });
+  });
+
+  describe('app management', () => {
+    beforeEach(async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: { sessionId: 'app-session' } }),
+      });
+      const sessionPromise = client.createSession();
+      await vi.runAllTimersAsync();
+      await sessionPromise;
+      mockFetch.mockClear();
+    });
+
+    it('should get list of installed apps', async () => {
+      const mockApps = [
+        {
+          CFBundleIdentifier: 'com.apple.mobilesafari',
+          CFBundleName: 'Safari',
+          CFBundleDisplayName: 'Safari',
+        },
+        {
+          CFBundleIdentifier: 'com.apple.photos',
+          CFBundleName: 'Photos',
+        },
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: mockApps }),
+      });
+
+      const appsPromise = client.getInstalledApps();
+      await vi.runAllTimersAsync();
+      const apps = await appsPromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/app-session/wda/apps/list',
+        expect.objectContaining({
+          method: 'GET',
+        })
+      );
+      expect(apps).toEqual(mockApps);
+    });
+
+    it('should return empty array when no apps', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: [] }),
+      });
+
+      const appsPromise = client.getInstalledApps();
+      await vi.runAllTimersAsync();
+      const apps = await appsPromise;
+
+      expect(apps).toEqual([]);
+    });
+
+    it('should launch app by bundle ID', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      const launchPromise = client.launchApp('com.apple.mobilesafari');
+      await vi.runAllTimersAsync();
+      await launchPromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/app-session/wda/apps/launch',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ bundleId: 'com.apple.mobilesafari' }),
+        })
+      );
+    });
+
+    it('should terminate app by bundle ID', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: null }),
+      });
+
+      const terminatePromise = client.terminateApp('com.apple.mobilesafari');
+      await vi.runAllTimersAsync();
+      await terminatePromise;
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8100/session/app-session/wda/apps/terminate',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ bundleId: 'com.apple.mobilesafari' }),
+        })
+      );
+    });
+  });
 });

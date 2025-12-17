@@ -1123,8 +1123,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       },
       async () => {
         try {
-          // Get all apps (not just third-party) for better UX
-          return await this._deviceService!.getInstalledApps(false);
+          return await this._deviceService!.getInstalledApps();
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           vscode.window.showErrorMessage(
@@ -1139,10 +1138,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Create quick pick items with package names
+    // Create quick pick items with app IDs (package name for Android, bundle ID for iOS)
     const items = apps.map((app) => ({
-      label: app.packageName,
-      packageName: app.packageName,
+      label: app.displayName,
+      description: app.appId,
+      appId: app.appId,
     }));
 
     // Show quick pick with search
@@ -1156,7 +1156,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
     // Launch the selected app
     try {
-      this._deviceService.launchApp(selected.packageName);
+      await this._deviceService.launchApp(selected.appId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(vscode.l10n.t('Failed to launch app: {0}', message));

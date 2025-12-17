@@ -26,6 +26,9 @@ export interface PlatformCapabilities {
   supportsFileUpload: boolean;
   supportsAppLaunch: boolean;
 
+  // Clipboard
+  supportsClipboard: boolean;
+
   // Audio/Video
   supportsAudioCapture: boolean;
   supportedVideoCodecs: VideoCodec[];
@@ -52,6 +55,9 @@ export const ANDROID_CAPABILITIES: PlatformCapabilities = {
   supportsFileUpload: true,
   supportsAppLaunch: true,
 
+  // Clipboard - full support
+  supportsClipboard: true,
+
   // Audio/Video - full support
   supportsAudioCapture: true,
   supportedVideoCodecs: ['h264', 'h265', 'av1'],
@@ -77,6 +83,9 @@ export const IOS_CAPABILITIES: PlatformCapabilities = {
   supportsApkInstall: false,
   supportsFileUpload: false,
   supportsAppLaunch: false,
+
+  // Clipboard - disabled by default, enabled when WDA connects
+  supportsClipboard: false,
 
   // Audio/Video - CoreMediaIO supports both
   supportsAudioCapture: true,

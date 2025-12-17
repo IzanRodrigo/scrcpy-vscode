@@ -184,14 +184,14 @@ export interface IDeviceConnection {
   // Clipboard (may not be supported on all platforms)
 
   /**
-   * Paste text from host to device
+   * Paste clipboard content from host to device
    */
-  pasteFromHost?(text: string): void;
+  pasteFromHost?(): Promise<void>;
 
   /**
-   * Request clipboard content from device
+   * Copy clipboard content from device to host
    */
-  copyToHost?(): void;
+  copyToHost?(): Promise<void>;
 
   // Screenshot
 
@@ -199,4 +199,22 @@ export interface IDeviceConnection {
    * Take a screenshot
    */
   takeScreenshot?(): Promise<Buffer | null>;
+
+  // App management (may not be supported on all platforms)
+
+  /**
+   * Launch an app by identifier (package name for Android, bundle ID for iOS)
+   */
+  launchApp?(appId: string): Promise<void>;
+
+  /**
+   * Get list of installed apps
+   * Returns array of { appId, displayName } where appId is package name (Android) or bundle ID (iOS)
+   */
+  getInstalledApps?(): Promise<Array<{ appId: string; displayName: string }>>;
+
+  /**
+   * Terminate an app by identifier
+   */
+  terminateApp?(appId: string): Promise<void>;
 }

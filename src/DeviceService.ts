@@ -1376,15 +1376,18 @@ export class DeviceService {
   }
 
   async pasteFromHost(): Promise<void> {
-    await this.getActiveAndroidConnection()?.pasteFromHost();
+    const connection = this.getActiveSession()?.connection;
+    await connection?.pasteFromHost?.();
   }
 
   async copyToHost(): Promise<void> {
-    await this.getActiveAndroidConnection()?.copyToHost();
+    const connection = this.getActiveSession()?.connection;
+    await connection?.copyToHost?.();
   }
 
   rotateDevice(): void {
-    this.getActiveAndroidConnection()?.rotateDevice();
+    const connection = this.getActiveSession()?.connection;
+    connection?.rotate?.();
   }
 
   expandNotificationPanel(): void {
@@ -1400,21 +1403,15 @@ export class DeviceService {
   }
 
   async takeScreenshot(): Promise<Buffer> {
-    const session = this.getActiveSession();
-    if (!session?.connection) {
-      throw new Error(vscode.l10n.t('No active device'));
+    const connection = this.getActiveSession()?.connection;
+    if (!connection?.takeScreenshot) {
+      throw new Error(vscode.l10n.t('No active device or screenshot not supported'));
     }
-    const connection = session.connection;
-    if (this.isScrcpyConnection(connection)) {
-      return connection.takeScreenshot();
-    } else if (this.isiOSConnection(connection)) {
-      const screenshot = await connection.takeScreenshot();
-      if (!screenshot) {
-        throw new Error(vscode.l10n.t('Screenshot not available'));
-      }
-      return screenshot;
+    const screenshot = await connection.takeScreenshot();
+    if (!screenshot) {
+      throw new Error(vscode.l10n.t('Screenshot not available'));
     }
-    throw new Error(vscode.l10n.t('Screenshot not supported'));
+    return screenshot;
   }
 
   async listCameras(): Promise<string> {
@@ -1441,22 +1438,20 @@ export class DeviceService {
     await connection.pushFiles(filePaths, destPath);
   }
 
-  launchApp(packageName: string): void {
-    const connection = this.getActiveAndroidConnection();
-    if (!connection) {
-      throw new Error(vscode.l10n.t('App launch is only supported on Android devices'));
+  async launchApp(appId: string): Promise<void> {
+    const connection = this.getActiveSession()?.connection;
+    if (!connection?.launchApp) {
+      throw new Error(vscode.l10n.t('No active device or app launch not supported'));
     }
-    connection.startApp(packageName);
+    await connection.launchApp(appId);
   }
 
-  async getInstalledApps(
-    thirdPartyOnly: boolean = false
-  ): Promise<Array<{ packageName: string; label: string }>> {
-    const connection = this.getActiveAndroidConnection();
-    if (!connection) {
-      throw new Error(vscode.l10n.t('No active Android device'));
+  async getInstalledApps(): Promise<Array<{ appId: string; displayName: string }>> {
+    const connection = this.getActiveSession()?.connection;
+    if (!connection?.getInstalledApps) {
+      throw new Error(vscode.l10n.t('No active device or app listing not supported'));
     }
-    return connection.getInstalledApps(thirdPartyOnly);
+    return connection.getInstalledApps();
   }
 
   async getDisplays(deviceId?: string): Promise<Array<{ id: number; info: string }>> {

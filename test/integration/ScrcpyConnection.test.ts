@@ -1027,7 +1027,7 @@ describe('ScrcpyConnection', () => {
         }
       );
 
-      await connection.getInstalledApps(true);
+      await connection.getInstalledAppsFiltered(true);
 
       expect(execFile).toHaveBeenCalledWith(
         'adb',

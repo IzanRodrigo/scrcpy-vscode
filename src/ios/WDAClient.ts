@@ -58,6 +58,16 @@ export interface WDATouchAction {
 }
 
 /**
+ * App information returned by WDA
+ */
+export interface WDAAppInfo {
+  CFBundleIdentifier: string;
+  CFBundleName: string;
+  CFBundleDisplayName?: string;
+  CFBundleVersion?: string;
+}
+
+/**
  * Request timeout in milliseconds
  */
 const REQUEST_TIMEOUT_MS = 5000;
@@ -430,6 +440,88 @@ export class WDAClient {
     );
 
     return response.value;
+  }
+
+  /**
+   * Rotate the device screen orientation
+   * @param degrees - Rotation in degrees clockwise (0, 90, 180, 270)
+   */
+  async rotateDevice(degrees: 0 | 90 | 180 | 270 = 90): Promise<void> {
+    const sessionId = await this.ensureSession();
+
+    await this.request('POST', `/session/${sessionId}/rotation`, {
+      x: 0,
+      y: 0,
+      z: degrees,
+    });
+  }
+
+  /**
+   * Get device clipboard content
+   */
+  async getClipboard(): Promise<string> {
+    const sessionId = await this.ensureSession();
+
+    const response = await this.request<{ value: string }>(
+      'GET',
+      `/session/${sessionId}/wda/pasteboard`
+    );
+
+    return response.value || '';
+  }
+
+  /**
+   * Set device clipboard content
+   * @param text - Text to set on device clipboard
+   */
+  async setClipboard(text: string): Promise<void> {
+    const sessionId = await this.ensureSession();
+
+    // WDA expects base64-encoded content
+    const base64Content = Buffer.from(text, 'utf-8').toString('base64');
+
+    await this.request('POST', `/session/${sessionId}/wda/setPasteboard`, {
+      content: base64Content,
+      contentType: 'plaintext',
+    });
+  }
+
+  /**
+   * Get list of installed apps on device
+   */
+  async getInstalledApps(): Promise<WDAAppInfo[]> {
+    const sessionId = await this.ensureSession();
+
+    const response = await this.request<{ value: WDAAppInfo[] }>(
+      'GET',
+      `/session/${sessionId}/wda/apps/list`
+    );
+
+    return response.value || [];
+  }
+
+  /**
+   * Launch an app by bundle ID
+   * @param bundleId - App bundle identifier (e.g., "com.apple.mobilesafari")
+   */
+  async launchApp(bundleId: string): Promise<void> {
+    const sessionId = await this.ensureSession();
+
+    await this.request('POST', `/session/${sessionId}/wda/apps/launch`, {
+      bundleId,
+    });
+  }
+
+  /**
+   * Terminate an app by bundle ID
+   * @param bundleId - App bundle identifier
+   */
+  async terminateApp(bundleId: string): Promise<void> {
+    const sessionId = await this.ensureSession();
+
+    await this.request('POST', `/session/${sessionId}/wda/apps/terminate`, {
+      bundleId,
+    });
   }
 
   /**

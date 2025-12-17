@@ -421,6 +421,10 @@ export class iOSConnection implements IDeviceConnection {
       // Recents only works on devices with home button (double-tap triggers app switcher)
       supportsRecentsButton: wdaConnected && hasHomeButton,
       supportsVolumeControl: wdaConnected,
+      // New capabilities enabled when WDA is connected
+      supportsRotation: wdaConnected,
+      supportsClipboard: wdaConnected,
+      supportsAppLaunch: wdaConnected,
     };
     // Notify listeners of capability changes
     this.onCapabilitiesChanged?.(this._capabilities);
@@ -855,16 +859,106 @@ export class iOSConnection implements IDeviceConnection {
     });
   }
 
+  /**
+   * Rotate the device screen via WDA
+   * Uses 270 degrees (counter-clockwise) to match Android behavior
+   */
   rotate?(): void {
-    // Not supported on iOS via WDA
+    if (!this.wdaClient || !this.wdaReady) {
+      return;
+    }
+
+    // Rotate counter-clockwise (same as Android's rotateDevice)
+    // WDA uses clockwise degrees, so 270 = counter-clockwise 90
+    this.wdaClient.rotateDevice(270).catch((error) => {
+      console.error('[WDA] Rotation failed:', error);
+    });
   }
 
-  pasteFromHost?(): void {
-    // Not supported on iOS via WDA
+  /**
+   * Paste clipboard content from host to device via WDA
+   */
+  async pasteFromHost?(): Promise<void> {
+    if (!this.wdaClient || !this.wdaReady) {
+      return;
+    }
+
+    try {
+      // Read from VS Code clipboard (via extension host)
+      const vscode = await import('vscode');
+      const text = await vscode.env.clipboard.readText();
+
+      if (text) {
+        await this.wdaClient.setClipboard(text);
+      }
+    } catch (error) {
+      console.error('[WDA] Paste from host failed:', error);
+    }
   }
 
-  copyToHost?(): void {
-    // Not supported on iOS via WDA
+  /**
+   * Copy device clipboard content to host via WDA
+   */
+  async copyToHost?(): Promise<void> {
+    if (!this.wdaClient || !this.wdaReady) {
+      return;
+    }
+
+    try {
+      const text = await this.wdaClient.getClipboard();
+
+      if (text) {
+        // Write to VS Code clipboard (via extension host)
+        const vscode = await import('vscode');
+        await vscode.env.clipboard.writeText(text);
+
+        // Notify listeners of clipboard change
+        this.onClipboardChange?.(text);
+      }
+    } catch (error) {
+      console.error('[WDA] Copy to host failed:', error);
+    }
+  }
+
+  /**
+   * Launch an iOS app by bundle ID via WDA
+   * @param bundleId - App bundle identifier (e.g., "com.apple.mobilesafari")
+   */
+  async launchApp(bundleId: string): Promise<void> {
+    if (!this.wdaClient || !this.wdaReady) {
+      throw new Error('WDA not connected');
+    }
+
+    await this.wdaClient.launchApp(bundleId);
+  }
+
+  /**
+   * Get list of installed apps on the iOS device via WDA
+   * @returns Array of app info with appId (bundle ID) and displayName
+   */
+  async getInstalledApps(): Promise<Array<{ appId: string; displayName: string }>> {
+    if (!this.wdaClient || !this.wdaReady) {
+      throw new Error('WDA not connected');
+    }
+
+    const apps = await this.wdaClient.getInstalledApps();
+
+    return apps.map((app) => ({
+      appId: app.CFBundleIdentifier,
+      displayName: app.CFBundleDisplayName || app.CFBundleName,
+    }));
+  }
+
+  /**
+   * Terminate an iOS app by bundle ID via WDA
+   * @param bundleId - App bundle identifier
+   */
+  async terminateApp(bundleId: string): Promise<void> {
+    if (!this.wdaClient || !this.wdaReady) {
+      throw new Error('WDA not connected');
+    }
+
+    await this.wdaClient.terminateApp(bundleId);
   }
 
   async takeScreenshot(): Promise<Buffer | null> {
