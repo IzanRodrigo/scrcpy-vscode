@@ -647,14 +647,14 @@
     "menus": {
       "view/title": [
         {
-          "command": "scrcpy.connectWifi",
+          "command": "scrcpy.openSettings",
           "when": "view == scrcpy.deviceView",
           "group": "navigation@1"
         },
         {
-          "command": "scrcpy.openSettings",
+          "command": "scrcpy.connectWifi",
           "when": "view == scrcpy.deviceView",
-          "group": "navigation@2"
+          "group": "0_connection@1"
         },
         {
           "command": "scrcpy.uploadFiles",
@@ -680,6 +680,16 @@
           "command": "scrcpy.listCameras",
           "when": "view == scrcpy.deviceView && scrcpy.activeDevicePlatform == 'android'",
           "group": "2_device@3"
+        },
+        {
+          "command": "scrcpy.setupiOSInput",
+          "when": "view == scrcpy.deviceView && isMac",
+          "group": "3_ios@1"
+        },
+        {
+          "command": "scrcpy.startiOSInput",
+          "when": "view == scrcpy.deviceView && isMac",
+          "group": "3_ios@2"
         }
       ]
     },

@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored `DeviceService` to support multiple connection types (Android/iOS)
 - Platform-neutral status messages and error handling
 - Control buttons now respect platform capabilities (volume buttons shown only when supported)
+- Moved WiFi connection to overflow menu (less prominent, cleaner toolbar)
+- iOS setup commands now appear in overflow menu on macOS
 
 ### Documentation
 
