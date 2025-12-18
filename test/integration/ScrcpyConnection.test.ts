@@ -7,6 +7,11 @@ import { MockSocket, MockServer, createServer, resetMocks as resetNetMocks } fro
 vi.mock('child_process', () => import('../mocks/child_process'));
 vi.mock('net', () => import('../mocks/net'));
 vi.mock('vscode', () => import('../mocks/vscode'));
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+}));
 
 // Import after mocks are set up
 import { ScrcpyConnection, ScrcpyConfig } from '../../src/ScrcpyConnection';
