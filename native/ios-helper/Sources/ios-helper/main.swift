@@ -10,6 +10,15 @@ enum MessageType: UInt8 {
     case error = 0x05
     case status = 0x06
     case screenshot = 0x07
+    case permissionError = 0x08
+}
+
+/// Permission error payload for the binary protocol
+struct PermissionErrorPayload: Codable {
+    let type: String
+    let message: String
+    let guidance: String
+    let settingsUrl: String
 }
 
 /// Writes binary messages to stdout following the protocol format
@@ -49,6 +58,20 @@ class MessageWriter {
         let encoder = JSONEncoder()
         if let data = try? encoder.encode(devices) {
             write(type: .deviceList, payload: data)
+        }
+    }
+
+    /// Write permission error with guidance
+    static func writePermissionError(_ error: PermissionError) {
+        let payload = PermissionErrorPayload(
+            type: String(describing: error),
+            message: error.description,
+            guidance: error.guidance,
+            settingsUrl: PermissionError.screenRecordingSettingsURL
+        )
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(payload) {
+            write(type: .permissionError, payload: data)
         }
     }
 
@@ -113,28 +136,41 @@ class IOSHelperApp: ScreenCaptureDelegate {
             MessageWriter.writeStatus("Scanning for iOS screen devices...")
         }
 
-        let devices: [IOSDeviceInfo]
+        var allDevices: [IOSDeviceInfo] = []
+        var permissionErrors: [PermissionError] = []
+
         if normalized == "camera" {
-            devices = DeviceEnumerator.getIOSCameraDevices()
+            allDevices = DeviceEnumerator.getIOSCameraDevices()
         } else {
-            let directDevices = DeviceEnumerator.getIOSDevices()
+            let result = DeviceEnumerator.getIOSDevicesWithErrors()
+            allDevices = result.devices
+            permissionErrors = result.errors
+
+            // Also get mirroring windows
             let mirroringDevices = MirroringWindowEnumerator.getMirroringWindows()
-            devices = directDevices + mirroringDevices
+            allDevices.append(contentsOf: mirroringDevices)
         }
 
-        if devices.isEmpty {
+        // Only send permission errors if NO devices were found
+        // (if devices were found through mirroring or other means, the errors are non-fatal)
+        if allDevices.isEmpty {
+            for error in permissionErrors {
+                MessageWriter.writePermissionError(error)
+            }
+
             if normalized == "camera" {
                 MessageWriter.writeStatus(
                     "No iOS camera devices found. Try enabling Continuity Camera and selecting your iPhone as a camera source."
                 )
-            } else {
+            } else if permissionErrors.isEmpty {
+                // Only show generic message if no permission errors (permission errors have their own guidance)
                 MessageWriter.writeStatus(
                     "No iOS screen devices found. Ensure Screen Recording permission, connect via USB, and trust this Mac. To use Continuity Camera instead, set scrcpy.videoSource=camera."
                 )
             }
         }
 
-        MessageWriter.writeDeviceList(devices)
+        MessageWriter.writeDeviceList(allDevices)
     }
 
     /// Start streaming from a specific device

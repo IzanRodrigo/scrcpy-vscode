@@ -2,6 +2,83 @@ import AVFoundation
 import CoreMediaIO
 import CoreGraphics
 import Foundation
+import AppKit
+
+/// Error types for screen capture permission issues
+public enum PermissionError: Error, CustomStringConvertible {
+    case screenRecordingPermissionDenied
+    case screenCaptureAssistantFailed(exitCode: Int32, message: String)
+    case coreMediaIOError(status: OSStatus, property: String)
+
+    public var description: String {
+        switch self {
+        case .screenRecordingPermissionDenied:
+            return "Screen Recording permission not granted"
+        case .screenCaptureAssistantFailed(let exitCode, let message):
+            return "iOSScreenCaptureAssistant failed (exit \(exitCode)): \(message)"
+        case .coreMediaIOError(let status, let property):
+            return "CoreMediaIO error \(status) setting \(property)"
+        }
+    }
+
+    /// User-friendly guidance message
+    public var guidance: String {
+        switch self {
+        case .screenRecordingPermissionDenied:
+            return """
+            Screen Recording permission is required for iOS screen capture.
+
+            To fix:
+            1. Open System Settings > Privacy & Security > Screen Recording
+            2. Enable permission for Terminal or VS Code
+            3. Restart the application after granting permission
+            """
+        case .screenCaptureAssistantFailed:
+            return """
+            The iOS Screen Capture Assistant service failed to start.
+            This is usually a permission issue.
+
+            To fix:
+            1. Open System Settings > Privacy & Security > Screen Recording
+            2. Enable permission for Terminal or VS Code
+            3. Restart the application after granting permission
+            """
+        case .coreMediaIOError:
+            return """
+            Failed to enable screen capture devices.
+            This is usually a permission issue.
+
+            To fix:
+            1. Open System Settings > Privacy & Security > Screen Recording
+            2. Enable permission for Terminal or VS Code
+            3. Restart the application after granting permission
+            """
+        }
+    }
+
+    /// URL to open Screen Recording settings
+    public static let screenRecordingSettingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+
+    /// Open Screen Recording settings in System Settings
+    public static func openScreenRecordingSettings() {
+        if let url = URL(string: screenRecordingSettingsURL) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+/// Result of enabling screen capture devices
+public struct EnableScreenCaptureResult {
+    public let errors: [PermissionError]
+    public var hasPermissionError: Bool {
+        errors.contains { error in
+            switch error {
+            case .screenRecordingPermissionDenied, .screenCaptureAssistantFailed, .coreMediaIOError:
+                return true
+            }
+        }
+    }
+}
 
 /// Device information structure
 struct IOSDeviceInfo: Codable {
@@ -31,13 +108,20 @@ class DeviceEnumerator {
 
     /// Enable CoreMediaIO screen capture devices
     /// This is required before iOS devices appear as AVCaptureDevice
-    static func enableScreenCaptureDevices() {
-        kickstartIOSScreenCaptureAssistant()
+    /// Returns a result containing any errors that occurred
+    @discardableResult
+    static func enableScreenCaptureDevices() -> EnableScreenCaptureResult {
+        var errors: [PermissionError] = []
+
+        // Try to kickstart the iOS Screen Capture Assistant
+        if let kickstartError = kickstartIOSScreenCaptureAssistant() {
+            errors.append(kickstartError)
+        }
 
         var allow: UInt32 = 1
         let dataSize = UInt32(MemoryLayout<UInt32>.size)
 
-        func setHardwareProperty(_ selector: CMIOObjectPropertySelector, label: String) {
+        func setHardwareProperty(_ selector: CMIOObjectPropertySelector, label: String) -> PermissionError? {
             var property = CMIOObjectPropertyAddress(
                 mSelector: selector,
                 mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
@@ -58,27 +142,36 @@ class DeviceEnumerator {
                     "[DeviceEnumerator] Failed to enable \(label) (status=\(status)).\n",
                     stderr
                 )
+                return .coreMediaIOError(status: status, property: label)
             }
+            return nil
         }
 
         // Present wired screen capture devices to this process.
-        setHardwareProperty(
+        if let err = setHardwareProperty(
             CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowScreenCaptureDevices),
             label: "screen capture devices"
-        )
+        ) {
+            errors.append(err)
+        }
 
         // Present wireless screen capture devices (default is 0 on newer macOS).
-        setHardwareProperty(
+        if let err = setHardwareProperty(
             CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowWirelessScreenCaptureDevices),
             label: "wireless screen capture devices"
-        )
+        ) {
+            errors.append(err)
+        }
+
+        return EnableScreenCaptureResult(errors: errors)
     }
 
     /// Ensure `iOSScreenCaptureAssistant` is running.
     ///
     /// On macOS Tahoe, the screen capture DAL can fail to surface muxed iOS devices until the
     /// corresponding launchd service is started.
-    private static func kickstartIOSScreenCaptureAssistant() {
+    /// Returns an error if the kickstart fails with a permission-related error.
+    private static func kickstartIOSScreenCaptureAssistant() -> PermissionError? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = ["kickstart", "-k", "system/com.apple.cmio.iOSScreenCaptureAssistant"]
@@ -94,19 +187,32 @@ class DeviceEnumerator {
         } catch {
             // Best-effort; continue enumeration even if kickstart fails.
             fputs("[DeviceEnumerator] Failed to run launchctl kickstart: \(error)\n", stderr)
-            return
+            return nil
         }
 
+        let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        let out = String(data: outData, encoding: .utf8) ?? ""
+        let err = String(data: errData, encoding: .utf8) ?? ""
+        let combined = (out + err).trimmingCharacters(in: .whitespacesAndNewlines)
+
         if task.terminationStatus != 0 {
-            let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let out = String(data: outData, encoding: .utf8) ?? ""
-            let err = String(data: errData, encoding: .utf8) ?? ""
-            let combined = (out + err).trimmingCharacters(in: .whitespacesAndNewlines)
             if !combined.isEmpty {
                 fputs("[DeviceEnumerator] launchctl kickstart output: \(combined)\n", stderr)
             }
+
+            // Check for permission-related error (exit code 150 = "Operation not permitted")
+            if combined.contains("Operation not permitted") ||
+               combined.contains("System Integrity Protection") ||
+               task.terminationStatus == 150 {
+                return .screenCaptureAssistantFailed(
+                    exitCode: task.terminationStatus,
+                    message: combined.isEmpty ? "Permission denied" : combined
+                )
+            }
         }
+
+        return nil
     }
 
     /// Continuity Camera device IDs typically end with these suffixes.
@@ -299,9 +405,23 @@ class DeviceEnumerator {
         return false
     }
 
+    /// Result of getting iOS devices, including any permission errors
+    struct GetDevicesResult {
+        let devices: [IOSDeviceInfo]
+        let errors: [PermissionError]
+
+        var hasPermissionError: Bool {
+            !errors.isEmpty
+        }
+    }
+
     /// Get list of connected iOS devices (screen capture, not cameras)
-    static func getIOSDevices() -> [IOSDeviceInfo] {
-        enableScreenCaptureDevices()
+    /// Returns both devices and any permission errors that occurred
+    static func getIOSDevicesWithErrors() -> GetDevicesResult {
+        var errors: [PermissionError] = []
+
+        let enableResult = enableScreenCaptureDevices()
+        errors.append(contentsOf: enableResult.errors)
 
         if !CGPreflightScreenCaptureAccess() {
             fputs(
@@ -316,8 +436,24 @@ class DeviceEnumerator {
                 "[DeviceEnumerator] System Settings > Privacy & Security > Screen Recording, then restart the app.\n",
                 stderr
             )
-            return []
+            errors.append(.screenRecordingPermissionDenied)
+            return GetDevicesResult(devices: [], errors: errors)
         }
+
+        // Continue with device enumeration...
+        let devices = enumerateIOSDevices()
+        return GetDevicesResult(devices: devices, errors: errors)
+    }
+
+    /// Get list of connected iOS devices (screen capture, not cameras)
+    /// Legacy method for backward compatibility - use getIOSDevicesWithErrors() for error handling
+    static func getIOSDevices() -> [IOSDeviceInfo] {
+        let result = getIOSDevicesWithErrors()
+        return result.devices
+    }
+
+    /// Internal device enumeration logic
+    private static func enumerateIOSDevices() -> [IOSDeviceInfo] {
 
         // Debug: list all CoreMediaIO devices directly
         listAllCoreMediaIODevices()

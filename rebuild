@@ -1,0 +1,19 @@
+#!/bin/bash
+set -e
+
+cd "$(dirname "$0")"
+
+echo "==> Rebuilding ios-helper..."
+cd native/ios-helper
+rm -rf .build
+swift build -c release
+cd ../..
+
+echo "==> Copying ios-helper to dist..."
+mkdir -p dist/ios-helper
+cp native/ios-helper/.build/release/ios-helper dist/ios-helper/
+
+echo "==> Rebuilding extension..."
+npm run compile
+
+echo "==> Done! Reload VS Code to use the new build."

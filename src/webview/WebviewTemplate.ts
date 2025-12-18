@@ -534,6 +534,22 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       display: none;
     }
 
+    /* Info overlay - appears on top of video with semi-transparent background */
+    .status.info-overlay {
+      background: rgba(0, 0, 0, 0.75);
+      border-color: var(--vscode-textLink-foreground, #3794ff);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status .info-icon {
+      color: var(--vscode-textLink-foreground, #3794ff);
+      display: flex;
+      align-items: center;
+    }
+
     .status.warning {
       border-color: var(--vscode-inputValidation-warningBorder, #cf9300);
       display: flex;

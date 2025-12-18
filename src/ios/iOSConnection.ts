@@ -62,6 +62,13 @@ export class iOSConnection implements IDeviceConnection {
   private _frameLogged = false;
   private readonly videoSource: 'display' | 'camera';
 
+  // Frame timeout detection (for screen off state)
+  private lastFrameTime = 0;
+  private hasReceivedFirstFrame = false;
+  private frameTimeoutTimer: ReturnType<typeof setInterval> | null = null;
+  private captureStartedTime = 0;
+  private screenOffNotified = false;
+
   // WebDriverAgent integration (Phase 8)
   private wdaClient: WDAClient | null = null;
   private wdaReady = false;
@@ -602,14 +609,26 @@ export class iOSConnection implements IDeviceConnection {
         this.handleVideoConfig(payload);
         break;
       case MessageType.VIDEO_FRAME:
+        this.lastFrameTime = Date.now();
+        if (!this.hasReceivedFirstFrame) {
+          this.hasReceivedFirstFrame = true;
+          this.screenOffNotified = false;
+        }
         this.handleVideoFrame(payload);
         break;
       case MessageType.ERROR:
         this.onError?.(payload.toString('utf8'));
         break;
-      case MessageType.STATUS:
-        this.onStatus?.(payload.toString('utf8'));
+      case MessageType.STATUS: {
+        const statusText = payload.toString('utf8');
+        console.log(`[iOSConnection] STATUS message: "${statusText}"`);
+        this.onStatus?.(statusText);
+        // Start frame timeout detection when capture starts
+        if (statusText === 'Capture started') {
+          this.startFrameTimeoutDetection();
+        }
         break;
+      }
     }
   }
 
@@ -700,8 +719,73 @@ export class iOSConnection implements IDeviceConnection {
     );
   }
 
+  /**
+   * Start periodic frame timeout detection
+   * Shows helpful messages when device screen is off
+   */
+  private startFrameTimeoutDetection(): void {
+    this.captureStartedTime = Date.now();
+    this.hasReceivedFirstFrame = false;
+    this.screenOffNotified = false;
+    this.lastFrameTime = 0;
+
+    console.log('[iOSConnection] Starting frame timeout detection');
+
+    // Clear any existing timer
+    if (this.frameTimeoutTimer) {
+      clearInterval(this.frameTimeoutTimer);
+    }
+
+    // Check every 2 seconds
+    this.frameTimeoutTimer = setInterval(() => {
+      const now = Date.now();
+
+      // Case 1: Never received any frames after capture started
+      if (!this.hasReceivedFirstFrame) {
+        const timeSinceCaptureStarted = now - this.captureStartedTime;
+        console.log(
+          `[iOSConnection] Frame check: no frames yet, ${timeSinceCaptureStarted}ms since capture started`
+        );
+        // Wait 5 seconds before showing the message
+        if (timeSinceCaptureStarted > 5000 && !this.screenOffNotified) {
+          this.screenOffNotified = true;
+          this.onStatus?.('Wake your iOS device to start screen capture');
+        }
+        return;
+      }
+
+      // Case 2: Was receiving frames but they stopped
+      const timeSinceLastFrame = now - this.lastFrameTime;
+      console.log(`[iOSConnection] Frame check: ${timeSinceLastFrame}ms since last frame`);
+      // If no frame for 3 seconds, device screen is likely off
+      if (timeSinceLastFrame > 3000 && !this.screenOffNotified) {
+        this.screenOffNotified = true;
+        this.onStatus?.('Device screen is off - wake device to resume');
+      } else if (timeSinceLastFrame < 1000 && this.screenOffNotified) {
+        // Frames resumed, clear the notification
+        this.screenOffNotified = false;
+        this.onStatus?.(`Streaming at ${this._deviceWidth}x${this._deviceHeight}`);
+      }
+    }, 2000);
+  }
+
+  /**
+   * Stop frame timeout detection
+   */
+  private stopFrameTimeoutDetection(): void {
+    if (this.frameTimeoutTimer) {
+      clearInterval(this.frameTimeoutTimer);
+      this.frameTimeoutTimer = null;
+    }
+    this.hasReceivedFirstFrame = false;
+    this.screenOffNotified = false;
+  }
+
   disconnect(): void {
     this._connected = false;
+
+    // Stop frame timeout detection
+    this.stopFrameTimeoutDetection();
 
     // Stop helper process
     if (this.helperProcess) {

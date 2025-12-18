@@ -20,6 +20,9 @@ npm run compile
 # Watch mode for development
 npm run watch
 
+# Rebuild ios-helper and extension (development)
+./rebuild
+
 # Run extension (press F5 in VS Code)
 ```
 
@@ -294,7 +297,20 @@ The ios-helper Swift binary handles iOS device discovery and screen capture:
    - `main.swift` routes `window:` prefixed UDIDs to WindowCapture instead of ScreenCapture
    - Touch coordinates are mapped using WDA's actual screen dimensions (may differ from video dimensions)
 
-4. **Known Limitations**:
+4. **Permission Error Handling** (`DeviceEnumerator.swift` + `main.swift`):
+   - Detects Screen Recording permission errors via CoreMediaIO status codes and launchctl exit codes
+   - `PermissionError` enum categorizes errors: `screenRecordingPermissionDenied`, `screenCaptureAssistantFailed`, `coreMediaIOError`
+   - Binary protocol includes `PERMISSION_ERROR` (0x08) message type with JSON payload containing guidance
+   - `iOSDeviceManager.ts` parses permission errors and shows VS Code notification with "Open Settings" button
+   - ios-preview CLI auto-opens System Settings to Screen Recording panel when permission error detected
+
+5. **iOS Lifecycle Management** (`extension.ts` + `DeviceService.ts`):
+   - iOS helper is preloaded at extension startup when `scrcpy.iosSupport` is enabled
+   - Configuration change listener handles `scrcpy.iosSupport` toggle:
+     - When enabled: preloads iOS helper via `iOSDeviceManager.getAvailableDevices()`
+     - When disabled: stops all iOS connections via `DeviceService.stopAllIOSConnections()`
+
+6. **Known Limitations**:
    - On macOS 26.x with iOS 26.x (including 26.1), the CoreMediaIO screen capture device may not appear until `iOSScreenCaptureAssistant` is running and Screen Recording permission is granted
    - If screen capture isn't available, set `scrcpy.videoSource` to `camera` to use Continuity Camera instead
    - Window capture requires iPhone Mirroring or AirPlay to be active and visible on screen

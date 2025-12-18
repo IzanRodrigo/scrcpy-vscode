@@ -115,7 +115,7 @@ export interface WebviewSettings {
  * Status message shown in the UI
  */
 export interface StatusMessage {
-  type: 'loading' | 'error' | 'empty';
+  type: 'loading' | 'error' | 'empty' | 'info';
   text: string;
   deviceId?: string;
 }

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { ScrcpyViewProvider } from './ScrcpyViewProvider';
 import { checkAllTools, clearCache } from './ToolChecker';
+import { isIOSSupportAvailable } from './PlatformCapabilities';
+import { iOSDeviceManager } from './ios/iOSDeviceManager';
 
 let provider: ScrcpyViewProvider | undefined;
 
@@ -13,6 +15,18 @@ export async function activate(context: vscode.ExtensionContext) {
   const scrcpyPath = config.get<string>('path', '');
 
   const toolResult = await checkAllTools(adbPath, scrcpyPath);
+
+  // Preload iOS helper to initialize screen capture devices early
+  if (isIOSSupportAvailable()) {
+    const iosEnabled = config.get<boolean>('iosSupport', true);
+    if (iosEnabled) {
+      console.log('[iOS] Preloading iOS helper...');
+      // This spawns ios-helper which kickstarts the iOSScreenCaptureAssistant
+      iOSDeviceManager.getAvailableDevices().catch((err) => {
+        console.error('[iOS] Failed to preload iOS helper:', err);
+      });
+    }
+  }
 
   // Create provider with tool status
   provider = new ScrcpyViewProvider(context.extensionUri, toolResult);
@@ -37,6 +51,24 @@ export async function activate(context: vscode.ExtensionContext) {
           cfg.get<string>('path', '')
         );
         provider?.updateToolStatus(newResult);
+      }
+
+      // Handle iOS support toggle
+      if (e.affectsConfiguration('scrcpy.iosSupport') && isIOSSupportAvailable()) {
+        const cfg = vscode.workspace.getConfiguration('scrcpy');
+        const iosEnabled = cfg.get<boolean>('iosSupport', true);
+
+        if (iosEnabled) {
+          // User enabled iOS support - preload the helper
+          console.log('[iOS] iOS support enabled, preloading helper...');
+          iOSDeviceManager.getAvailableDevices().catch((err) => {
+            console.error('[iOS] Failed to preload iOS helper:', err);
+          });
+        } else {
+          // User disabled iOS support - stop all iOS connections
+          console.log('[iOS] iOS support disabled, stopping iOS connections...');
+          provider?.stopAllIOSConnections();
+        }
       }
     })
   );

@@ -325,8 +325,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         if (this._isDisposed || !this._appState) {
           return;
         }
+        // Use 'info' type for screen-off notifications (shown as overlay on video)
+        const isScreenOffMessage =
+          status.includes('screen is off') || status.includes('Wake your iOS device');
         this._appState.setStatusMessage({
-          type: 'loading',
+          type: isScreenOffMessage ? 'info' : 'loading',
           text: status,
           deviceId: deviceId || undefined,
         });
@@ -1345,6 +1348,13 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       type: 'status',
       message: vscode.l10n.t('Disconnected'),
     });
+  }
+
+  /**
+   * Stop all iOS connections and cleanup iOS-related resources
+   */
+  public stopAllIOSConnections(): void {
+    this._deviceService?.stopAllIOSConnections();
   }
 
   /**

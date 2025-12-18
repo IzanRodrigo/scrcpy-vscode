@@ -103,7 +103,7 @@ interface DeviceState {
  * Status message from extension
  */
 interface StatusMessage {
-  type: 'loading' | 'error' | 'empty';
+  type: 'loading' | 'error' | 'empty' | 'info';
   text: string;
   deviceId?: string;
 }
@@ -864,6 +864,9 @@ function handleStateSnapshot(state: AppStateSnapshot): void {
         case 'error':
           showError(state.statusMessage.text);
           break;
+        case 'info':
+          showInfo(state.statusMessage.text);
+          break;
         case 'empty':
           // Show empty state when no devices are connected
           if (sessions.size === 0) {
@@ -1416,6 +1419,52 @@ function showStatus(text: string) {
 }
 
 /**
+ * Show info message (no spinner, appears as overlay on top of content)
+ */
+function showInfo(text: string) {
+  statusTextElement.textContent = text;
+  statusTextElement.classList.remove('error');
+  statusElement.classList.remove('hidden');
+  statusElement.classList.add('info-overlay');
+
+  // Hide spinner
+  const spinner = statusElement.querySelector('.spinner') as HTMLElement;
+  if (spinner) {
+    spinner.style.display = 'none';
+  }
+
+  // Show info icon if it exists, create if not
+  let infoIcon = statusElement.querySelector('.info-icon') as HTMLElement;
+  if (!infoIcon) {
+    infoIcon = document.createElement('div');
+    infoIcon.className = 'info-icon';
+    infoIcon.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="16" x2="12" y2="12"></line>
+      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>`;
+    statusElement.insertBefore(infoIcon, statusTextElement);
+  }
+  infoIcon.style.display = 'block';
+
+  // Hide other icons
+  const emptyIcon = statusElement.querySelector('.empty-icon') as HTMLElement;
+  if (emptyIcon) {
+    emptyIcon.style.display = 'none';
+  }
+  const errorIcon = statusElement.querySelector('.error-icon') as HTMLElement;
+  if (errorIcon) {
+    errorIcon.style.display = 'none';
+  }
+
+  // Remove buttons if exists
+  const btnContainer = statusElement.querySelector('.button-container');
+  if (btnContainer) {
+    btnContainer.remove();
+  }
+}
+
+/**
  * Show error message with reconnect button
  */
 function showError(text: string) {
@@ -1490,6 +1539,7 @@ function showError(text: string) {
  */
 function hideStatus() {
   statusElement.classList.add('hidden');
+  statusElement.classList.remove('info-overlay');
 }
 
 /**

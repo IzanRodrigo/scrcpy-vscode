@@ -20,16 +20,73 @@ private func isContinuityCameraUniqueID(_ uniqueID: String) -> Bool {
     uniqueID.hasSuffix("00000001") || uniqueID.hasSuffix("00000002")
 }
 
+/// Error types for screen capture permission issues
+private enum ScreenCaptureError {
+    case screenRecordingPermissionDenied
+    case screenCaptureAssistantFailed(exitCode: Int32, message: String)
+    case coreMediaIOError(status: OSStatus, property: String)
+
+    var description: String {
+        switch self {
+        case .screenRecordingPermissionDenied:
+            return "Screen Recording permission not granted"
+        case .screenCaptureAssistantFailed(let exitCode, let message):
+            return "iOSScreenCaptureAssistant failed (exit \(exitCode)): \(message)"
+        case .coreMediaIOError(let status, let property):
+            return "CoreMediaIO error \(status) setting \(property)"
+        }
+    }
+
+    static let screenRecordingSettingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+
+    static func openScreenRecordingSettings() {
+        if let url = URL(string: screenRecordingSettingsURL) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+private var detectedPermissionErrors: [ScreenCaptureError] = []
+
 private func kickstartIOSScreenCaptureAssistant() {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     task.arguments = ["kickstart", "-k", "system/com.apple.cmio.iOSScreenCaptureAssistant"]
+
+    let stdoutPipe = Pipe()
+    let stderrPipe = Pipe()
+    task.standardOutput = stdoutPipe
+    task.standardError = stderrPipe
+
     do {
         try task.run()
         task.waitUntilExit()
     } catch {
         // Best-effort: continue even if this fails.
         fputs("[ios-preview] launchctl kickstart failed: \(error)\n", stderr)
+        return
+    }
+
+    let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+    let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+    let out = String(data: outData, encoding: .utf8) ?? ""
+    let err = String(data: errData, encoding: .utf8) ?? ""
+    let combined = (out + err).trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if task.terminationStatus != 0 {
+        if !combined.isEmpty {
+            fputs("[ios-preview] launchctl kickstart output: \(combined)\n", stderr)
+        }
+
+        // Check for permission-related error
+        if combined.contains("Operation not permitted") ||
+           combined.contains("System Integrity Protection") ||
+           task.terminationStatus == 150 {
+            detectedPermissionErrors.append(.screenCaptureAssistantFailed(
+                exitCode: task.terminationStatus,
+                message: combined.isEmpty ? "Permission denied" : combined
+            ))
+        }
     }
 }
 
@@ -57,6 +114,7 @@ private func enableScreenCaptureDevices() {
 
         if status != noErr {
             fputs("[ios-preview] Failed to enable \(label) (status=\(status))\n", stderr)
+            detectedPermissionErrors.append(.coreMediaIOError(status: status, property: label))
         }
     }
 
@@ -82,6 +140,9 @@ private func resolveVideoSource(from args: [String]) -> VideoSource {
 }
 
 private func listCaptureSources(videoSource: VideoSource) -> [CaptureSource] {
+    // Clear any previous errors
+    detectedPermissionErrors = []
+
     enableScreenCaptureDevices()
 
     if !CGPreflightScreenCaptureAccess() {
@@ -97,6 +158,7 @@ private func listCaptureSources(videoSource: VideoSource) -> [CaptureSource] {
             "[ios-preview] System Settings > Privacy & Security > Screen Recording, then restart.\n",
             stderr
         )
+        detectedPermissionErrors.append(.screenRecordingPermissionDenied)
         return []
     }
 
@@ -346,6 +408,26 @@ func main() -> Int32 {
         let sources = listCaptureSources(videoSource: videoSource)
         if sources.isEmpty {
             print("No sources found (\(videoSource.rawValue)).")
+
+            // If permission errors were detected, show guidance and auto-open System Settings
+            if !detectedPermissionErrors.isEmpty {
+                print("")
+                print("Screen Recording Permission Required")
+                print("====================================")
+                print("")
+                print("iOS screen capture requires Screen Recording permission in macOS.")
+                print("")
+                print("To fix:")
+                print("1. Grant permission in the System Settings window that will open")
+                print("2. Add Terminal (or VS Code) to the allowed apps")
+                print("3. Restart the terminal after granting permission")
+                print("")
+                print("Opening System Settings...")
+
+                // Auto-open System Settings to Screen Recording
+                ScreenCaptureError.openScreenRecordingSettings()
+            }
+
             return 1
         }
         for (idx, s) in sources.enumerated() {

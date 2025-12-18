@@ -4,6 +4,7 @@
 
 import { spawn } from 'child_process';
 import * as fs from 'fs';
+import * as vscode from 'vscode';
 import { DeviceInfo } from '../IDeviceConnection';
 import { isIOSSupportAvailable } from '../PlatformCapabilities';
 import { resolveIOSHelperPath } from './iosHelperPath';
@@ -13,6 +14,17 @@ import { resolveIOSHelperPath } from './iosHelperPath';
  */
 enum MessageType {
   DEVICE_LIST = 0x01,
+  PERMISSION_ERROR = 0x08,
+}
+
+/**
+ * Permission error payload from ios-helper
+ */
+interface PermissionErrorPayload {
+  type: string;
+  message: string;
+  guidance: string;
+  settingsUrl: string;
 }
 
 /**
@@ -70,9 +82,12 @@ export class iOSDeviceManager {
         try {
           const buffer = Buffer.concat(chunks);
 
-          // Parse protocol: scan for DEVICE_LIST message
+          // Parse protocol: scan for messages
           // Format: type (1 byte) + length (4 bytes) + payload
           let offset = 0;
+          let devices: DeviceInfo[] = [];
+          let permissionError: PermissionErrorPayload | null = null;
+
           while (offset + 5 <= buffer.length) {
             const type = buffer.readUInt8(offset);
             const length = buffer.readUInt32BE(offset + 1);
@@ -81,34 +96,40 @@ export class iOSDeviceManager {
               break; // Incomplete message
             }
 
-            if (type === MessageType.DEVICE_LIST) {
-              const payload = buffer.subarray(offset + 5, offset + 5 + length);
-              const devices = JSON.parse(payload.toString('utf8'));
-              console.log('[iOSDeviceManager] Found', devices.length, 'iOS device(s):', devices);
+            const payload = buffer.subarray(offset + 5, offset + 5 + length);
 
-              resolve(
-                devices.map(
-                  (d: {
-                    udid: string;
-                    name: string;
-                    model: string;
-                    isCameraFallback?: boolean;
-                  }) => ({
-                    serial: d.udid,
-                    name: d.name,
-                    model: d.model,
-                    platform: 'ios' as const,
-                    isCameraFallback: d.isCameraFallback ?? false,
-                  })
-                )
+            if (type === MessageType.DEVICE_LIST) {
+              const deviceList = JSON.parse(payload.toString('utf8'));
+              console.log(
+                '[iOSDeviceManager] Found',
+                deviceList.length,
+                'iOS device(s):',
+                deviceList
               );
-              return;
+
+              devices = deviceList.map(
+                (d: { udid: string; name: string; model: string; isCameraFallback?: boolean }) => ({
+                  serial: d.udid,
+                  name: d.name,
+                  model: d.model,
+                  platform: 'ios' as const,
+                  isCameraFallback: d.isCameraFallback ?? false,
+                })
+              );
+            } else if (type === MessageType.PERMISSION_ERROR) {
+              permissionError = JSON.parse(payload.toString('utf8'));
+              console.log('[iOSDeviceManager] Permission error:', permissionError);
             }
 
             offset += 5 + length; // Move to next message
           }
 
-          resolve([]);
+          // Show permission error notification if present and no devices found
+          if (permissionError && devices.length === 0) {
+            this.showPermissionErrorNotification(permissionError);
+          }
+
+          resolve(devices);
         } catch (error) {
           console.error('[iOSDeviceManager] Failed to parse device list:', error);
           resolve([]);
@@ -133,5 +154,23 @@ export class iOSDeviceManager {
    */
   private static getHelperPath(): string {
     return resolveIOSHelperPath();
+  }
+
+  /**
+   * Show a permission error notification with an action button to open settings
+   */
+  private static showPermissionErrorNotification(error: PermissionErrorPayload): void {
+    const openSettingsButton = 'Open Settings';
+
+    vscode.window
+      .showErrorMessage(
+        `iOS Screen Capture: ${error.message}\n\n${error.guidance}`,
+        openSettingsButton
+      )
+      .then((selection) => {
+        if (selection === openSettingsButton && error.settingsUrl) {
+          vscode.env.openExternal(vscode.Uri.parse(error.settingsUrl));
+        }
+      });
   }
 }

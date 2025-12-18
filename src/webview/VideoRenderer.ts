@@ -235,7 +235,19 @@ export class VideoRenderer {
    * Following scrcpy approach: config packets are stored and prepended to next keyframe
    */
   pushFrame(data: Uint8Array, isConfig: boolean, isKeyFrame?: boolean) {
-    if (!this.decoder || !this.ctx) {
+    if (!this.ctx) {
+      return;
+    }
+
+    // Decoder may have been closed (e.g., after a fatal error); recreate it so we don't decode on a closed codec.
+    if (!this.decoder || this.decoder.state === 'closed') {
+      this.createDecoder();
+      if (this.lastConfig) {
+        this.pendingConfig = this.lastConfig;
+      }
+    }
+
+    if (!this.decoder) {
       return;
     }
 

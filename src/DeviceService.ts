@@ -103,6 +103,10 @@ export class DeviceService {
   private deviceInfoCache = new Map<string, { info: DeviceDetailedInfo; timestamp: number }>();
   private deviceInfoRefreshInterval: NodeJS.Timeout | null = null;
 
+  // iOS device polling (since there's no equivalent to adb track-devices)
+  private iosDevicePollingInterval: NodeJS.Timeout | null = null;
+  private knownIOSDeviceSerials = new Set<string>();
+
   // iOS configuration (Phase 8)
   private iosConfig: iOSConnectionConfig = {
     enabled: false,
@@ -588,6 +592,127 @@ export class DeviceService {
       clearInterval(this.deviceInfoRefreshInterval);
       this.deviceInfoRefreshInterval = null;
     }
+  }
+
+  /**
+   * Start polling for iOS device connections/disconnections
+   * Since there's no event-based monitoring like adb track-devices,
+   * we poll periodically to detect device changes.
+   */
+  private startIOSDevicePolling(): void {
+    if (!this.iosConfig.enabled || !isIOSSupportAvailable()) {
+      console.log(
+        '[DeviceService] iOS polling not started - enabled:',
+        this.iosConfig.enabled,
+        'available:',
+        isIOSSupportAvailable()
+      );
+      return;
+    }
+
+    console.log('[DeviceService] Starting iOS device polling');
+
+    // Poll every 3 seconds for iOS device changes
+    this.iosDevicePollingInterval = setInterval(async () => {
+      if (!this.appState.isMonitoring()) {
+        return;
+      }
+
+      try {
+        const iosDevices = await iOSDeviceManager.getAvailableDevices(this.config.videoSource);
+        const currentSerials = new Set(iosDevices.map((d) => d.serial));
+
+        console.log(
+          '[DeviceService] iOS poll: found',
+          iosDevices.length,
+          'devices, known:',
+          this.knownIOSDeviceSerials.size,
+          'autoConnect:',
+          this.config.autoConnect
+        );
+
+        // Find new iOS devices and auto-connect
+        if (this.config.autoConnect) {
+          for (const device of iosDevices) {
+            // Skip if already known or already has a session (any state)
+            if (this.knownIOSDeviceSerials.has(device.serial)) {
+              console.log('[DeviceService] iOS device already known:', device.serial);
+              continue;
+            }
+            if (this.findSessionBySerial(device.serial)) {
+              console.log('[DeviceService] iOS device already has session:', device.serial);
+              continue;
+            }
+
+            console.log('[DeviceService] New iOS device detected:', device.serial);
+
+            // Mark as known BEFORE connecting to prevent duplicate attempts
+            this.knownIOSDeviceSerials.add(device.serial);
+
+            this.statusCallback('', vscode.l10n.t('Connecting to {0}...', device.name));
+
+            try {
+              await this.addDevice(device);
+              console.log('[DeviceService] iOS device connected successfully:', device.serial);
+            } catch (error) {
+              console.error('[DeviceService] Failed to connect to iOS device:', error);
+              // Keep in knownIOSDeviceSerials to prevent immediate retry
+              // Will be cleared when device is unplugged and replugged
+            }
+          }
+        }
+
+        // Handle disconnected iOS devices
+        for (const serial of Array.from(this.knownIOSDeviceSerials)) {
+          if (!currentSerials.has(serial)) {
+            console.log('[DeviceService] iOS device disconnected:', serial);
+            this.knownIOSDeviceSerials.delete(serial);
+
+            // Remove the disconnected device from sessions
+            const session = this.findSessionBySerial(serial);
+            if (session) {
+              this.removeDevice(session.deviceId);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[DeviceService] iOS device polling error:', error);
+      }
+    }, 3000);
+  }
+
+  /**
+   * Stop iOS device polling
+   */
+  private stopIOSDevicePolling(): void {
+    if (this.iosDevicePollingInterval) {
+      clearInterval(this.iosDevicePollingInterval);
+      this.iosDevicePollingInterval = null;
+    }
+    this.knownIOSDeviceSerials.clear();
+  }
+
+  /**
+   * Stop all iOS connections and disable iOS support
+   */
+  stopAllIOSConnections(): void {
+    console.log('[DeviceService] Stopping all iOS connections');
+
+    // Stop polling
+    this.stopIOSDevicePolling();
+
+    // Stop all iOS sessions
+    for (const [deviceId, session] of this.sessions) {
+      if (session.deviceInfo.platform === 'ios' && session.connection) {
+        console.log(`[DeviceService] Stopping iOS connection: ${deviceId}`);
+        session.connection.disconnect();
+        session.connection = null;
+        this.appState.updateDeviceConnectionState(deviceId, 'disconnected');
+      }
+    }
+
+    // Remove iOS devices from known devices
+    this.knownIOSDeviceSerials.clear();
   }
 
   /**
@@ -1530,20 +1655,33 @@ export class DeviceService {
 
     // Initialize known devices with currently connected sessions
     this.knownDeviceSerials.clear();
+    this.knownIOSDeviceSerials.clear();
     for (const session of this.sessions.values()) {
-      this.knownDeviceSerials.add(session.deviceInfo.serial);
+      const serial = session.deviceInfo.serial;
+      if (session.deviceInfo.platform === 'ios') {
+        this.knownIOSDeviceSerials.add(serial);
+      } else {
+        this.knownDeviceSerials.add(serial);
+      }
     }
 
-    // Mark existing ADB devices as known if we have active sessions
+    // Mark existing devices as known if we have active sessions
     if (this.sessions.size > 0) {
       const devices = await this.getAvailableDevices();
       for (const device of devices) {
-        this.knownDeviceSerials.add(device.serial);
+        if (device.platform === 'ios') {
+          this.knownIOSDeviceSerials.add(device.serial);
+        } else {
+          this.knownDeviceSerials.add(device.serial);
+        }
       }
     }
 
     // Start adb track-devices process
     this.startTrackDevices();
+
+    // Start iOS device polling (if enabled)
+    this.startIOSDevicePolling();
 
     // Start periodic device info refresh
     this.startDeviceInfoRefresh();
@@ -1713,6 +1851,7 @@ export class DeviceService {
     }
     this.knownDeviceSerials.clear();
     this.stopDeviceInfoRefresh();
+    this.stopIOSDevicePolling();
   }
 
   /**
