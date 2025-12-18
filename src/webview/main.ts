@@ -398,23 +398,37 @@ function initialize() {
 
   if (deviceSettingsBtn) {
     deviceSettingsBtn.addEventListener('click', () => {
-      openDeviceSettings();
-    });
-  }
-
-  // Close device settings when clicking overlay or sections container (but not the sections themselves)
-  if (deviceSettingsOverlay) {
-    deviceSettingsOverlay.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      // Close if clicking the overlay or the sections container, but not inside a settings-group
-      if (
-        target === deviceSettingsOverlay ||
-        target.classList.contains('device-settings-sections')
-      ) {
+      if (deviceSettingsOverlay?.classList.contains('visible')) {
         closeDeviceSettings();
+      } else {
+        openDeviceSettings();
       }
     });
   }
+
+  // Add scroll listener for top fade effect
+  const sectionsContainer = document.querySelector('.device-settings-sections');
+  if (sectionsContainer) {
+    sectionsContainer.addEventListener('scroll', () => {
+      if (sectionsContainer.scrollTop > 10) {
+        sectionsContainer.classList.add('scrolled');
+      } else {
+        sectionsContainer.classList.remove('scrolled');
+      }
+    });
+  }
+
+  // Close control center when clicking outside of it
+  document.addEventListener('click', (e) => {
+    if (!deviceSettingsOverlay?.classList.contains('visible')) {
+      return;
+    }
+    const target = e.target as HTMLElement;
+    // Keep open if clicking inside the settings sections or the toggle button
+    if (!target.closest('.device-settings-sections') && !target.closest('#device-settings-btn')) {
+      closeDeviceSettings();
+    }
+  });
 
   // Add keyboard shortcuts for tab switching (Alt+1 to Alt+9)
   document.addEventListener('keydown', (e) => {
@@ -1749,6 +1763,17 @@ function openDeviceSettings() {
   // Show overlay
   deviceSettingsOverlay.classList.add('visible');
 
+  // Mark button as active and disable other toolbar buttons
+  deviceSettingsBtn?.classList.add('active');
+  document.getElementById('control-toolbar')?.classList.add('control-center-open');
+
+  // Reset scroll position and update scroll state
+  const sectionsContainer = document.querySelector('.device-settings-sections');
+  if (sectionsContainer) {
+    sectionsContainer.scrollTop = 0;
+    sectionsContainer.classList.remove('scrolled');
+  }
+
   // Request fresh settings from extension
   vscode.postMessage({ type: 'openDeviceSettings' });
 }
@@ -1764,6 +1789,10 @@ function closeDeviceSettings() {
   deviceSettingsOverlay.classList.remove('visible');
   currentDeviceSettings = null;
   pendingSettingChanges.clear();
+
+  // Remove active state and re-enable toolbar buttons
+  deviceSettingsBtn?.classList.remove('active');
+  document.getElementById('control-toolbar')?.classList.remove('control-center-open');
 }
 
 /**

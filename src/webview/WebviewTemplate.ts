@@ -350,6 +350,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       background: var(--vscode-sideBar-background);
       border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
       flex-shrink: 0;
+      position: relative;
+      z-index: 101;
     }
 
     .control-toolbar.hidden {
@@ -415,6 +417,15 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     .control-btn.loading {
       pointer-events: none;
       opacity: 0.7;
+    }
+
+    .control-btn.active {
+      background: var(--vscode-button-background, #0078d4);
+      color: var(--vscode-button-foreground, white);
+    }
+
+    .control-toolbar.control-center-open .control-btn:not(.active) {
+      opacity: 0.4;
     }
 
     .btn-spinner {
@@ -731,7 +742,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       justify-content: flex-end;
       z-index: 100;
       padding: 12px;
-      padding-bottom: 52px;
+      padding-bottom: 0;
       animation: overlayFadeIn 0.2s ease-out;
       cursor: pointer;
     }
@@ -756,20 +767,28 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       cursor: default;
       scrollbar-width: none;
       -ms-overflow-style: none;
-      padding: 16px 2px;
+      padding: 16px 2px 52px 2px;
+      /* Top fade only shown when scrolled (via .scrolled class) */
+      mask-image: none;
+      -webkit-mask-image: none;
+    }
+
+    .device-settings-sections.scrolled {
       mask-image: linear-gradient(
-        to bottom,
-        transparent 0%,
-        black 16px,
-        black calc(100% - 16px),
-        transparent 100%
+        in oklch to bottom,
+        oklch(0% 0 0 / 0) 0%,
+        oklch(0% 0 0 / 0.4) 12px,
+        oklch(0% 0 0 / 0.8) 20px,
+        oklch(0% 0 0 / 1) 28px,
+        oklch(0% 0 0 / 1) 100%
       );
       -webkit-mask-image: linear-gradient(
-        to bottom,
-        transparent 0%,
-        black 16px,
-        black calc(100% - 16px),
-        transparent 100%
+        in oklch to bottom,
+        oklch(0% 0 0 / 0) 0%,
+        oklch(0% 0 0 / 0.4) 12px,
+        oklch(0% 0 0 / 0.8) 20px,
+        oklch(0% 0 0 / 1) 28px,
+        oklch(0% 0 0 / 1) 100%
       );
     }
 
