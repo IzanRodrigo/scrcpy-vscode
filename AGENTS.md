@@ -561,6 +561,7 @@ test/
     - Test volume buttons: click volume up/down and verify volume changes
     - Disable WDA setting and verify tooltip shows "Input disabled"
     - Test without WDA running: verify tooltip shows "Input unavailable" and display-only mode works
+    - Test WDA overlay button: when WDA not running, verify "Start WDA" pill button appears over video; click to launch WDA
 23. Test iOS screenshots:
     - Connect iOS device via USB (macOS only)
     - Click screenshot button (📷) in toolbar

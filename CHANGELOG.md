@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Recents button available on devices with physical home button (iPhone 8, SE, older)
   - iproxy USB port forwarding for WDA connection
   - WDA status indicator in device tooltip (connected/connecting/unavailable/disabled)
+  - **WDA overlay button** - Shows "Start WDA" pill button on iOS video when touch input is unavailable, allowing quick launch of WDA
   - **Rotation control** - Rotate iOS device screen via WDA when connected
   - **Clipboard sync** - Bidirectional clipboard sync between PC and iOS device (Ctrl+C/Ctrl+V)
   - **App launcher** - Launch iOS apps by bundle ID, with searchable app list
@@ -82,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Helper is only loaded if `scrcpy.iosSupport` setting is enabled
   - When user enables iOS support via settings, helper is preloaded automatically
   - When user disables iOS support via settings, all iOS connections are stopped and resources cleaned up
+  - iOS capture is prewarmed when user clicks an iOS device tab for faster initial connection
 - **Fixed ios-helper binary being killed (SIGKILL/exit code 137)** - Copying the binary to dist invalidated code signature
   - Webpack now re-signs the binary after copying with `codesign --force --sign -`
   - Also clears extended attributes (`xattr -c`) that could cause TCC rejection
