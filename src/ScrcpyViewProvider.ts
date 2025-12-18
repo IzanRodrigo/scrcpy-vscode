@@ -1082,35 +1082,40 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       }
 
       if (cameraItems.length === 0) {
-        vscode.window.showInformationMessage('No cameras found on the device');
+        vscode.window.showInformationMessage(vscode.l10n.t('No cameras found on the device'));
         return;
       }
 
       // Show quick pick
       const selected = await vscode.window.showQuickPick(cameraItems, {
-        title: 'Available Cameras',
-        placeHolder: 'Select a camera to copy its ID to settings',
+        title: vscode.l10n.t('Available Cameras'),
+        placeHolder: vscode.l10n.t('Select a camera to copy its ID to settings'),
       });
 
       if (selected && selected.id) {
         // Ask if user wants to set this camera ID in settings
+        const applyLabel = vscode.l10n.t('Apply');
+        const cancelLabel = vscode.l10n.t('Cancel');
         const setCameraId = await vscode.window.showInformationMessage(
-          `Set camera ID to "${selected.id}" in settings?`,
-          'Yes',
-          'No'
+          vscode.l10n.t('Set camera ID to "{0}" in settings?', selected.id),
+          applyLabel,
+          cancelLabel
         );
 
-        if (setCameraId === 'Yes') {
+        if (setCameraId === applyLabel) {
           const config = vscode.workspace.getConfiguration('scrcpy');
           await config.update('cameraId', selected.id, vscode.ConfigurationTarget.Workspace);
           vscode.window.showInformationMessage(
-            `Camera ID set to "${selected.id}". Change video source to "camera" to use it.`
+            vscode.l10n.t(
+              'Camera ID set to "{0}". Change video source to "camera" to use it.',
+              selected.id
+            )
           );
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to list cameras: ${message}`);
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to list cameras: {0}', message));
     }
   }
 
@@ -1450,7 +1455,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     duration: number;
   }): Promise<void> {
     if (!message.data || message.data.length === 0) {
-      vscode.window.showErrorMessage('Recording is empty');
+      vscode.window.showErrorMessage(vscode.l10n.t('Recording is empty'));
       return;
     }
 
@@ -1484,7 +1489,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         uri = await vscode.window.showSaveDialog({
           defaultUri: vscode.Uri.file(filename),
           filters,
-          title: 'Save Recording',
+          title: vscode.l10n.t('Save Recording'),
         });
 
         if (!uri) {
@@ -1502,14 +1507,14 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       // Show success notification with file path
       const durationStr = `${Math.floor(message.duration / 60)}:${String(Math.floor(message.duration % 60)).padStart(2, '0')}`;
       vscode.window.showInformationMessage(
-        `Recording saved: ${path.basename(uri.fsPath)} (${durationStr})`
+        vscode.l10n.t('Recording saved: {0} ({1})', path.basename(uri.fsPath), durationStr)
       );
 
       // Optionally open the video
       // await vscode.commands.executeCommand('vscode.open', uri);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to save recording: ${message}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to save recording: {0}', errorMsg));
     }
   }
 

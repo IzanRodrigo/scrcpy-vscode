@@ -96,6 +96,33 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       box-sizing: border-box;
     }
 
+    /* ===== Design System Tokens ===== */
+    :root {
+      /* Glass-morphism */
+      --glass-bg: rgba(30, 30, 30, 0.72);
+      --glass-bg-dark: rgba(20, 20, 20, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-border-light: rgba(255, 255, 255, 0.12);
+      --glass-blur: 24px;
+      --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      --glass-shadow-subtle: 0 4px 16px rgba(0, 0, 0, 0.25);
+
+      /* Unified border radius */
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+
+      /* Transitions */
+      --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-medium: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+      /* Overlay */
+      --overlay-blur: blur(12px);
+      --overlay-bg: rgba(0, 0, 0, 0.5);
+    }
+
     html, body {
       width: 100%;
       height: 100%;
@@ -249,22 +276,37 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     /* Device info tooltip */
     .device-info-tooltip {
       position: absolute;
-      top: 40px;
+      top: 44px;
       left: 0;
-      background: var(--vscode-editorHoverWidget-background, #252526);
-      color: var(--vscode-editorHoverWidget-foreground, #ccc);
-      border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
-      border-radius: 4px;
-      padding: 8px 12px;
+      /* Glass-morphism */
+      background: var(--glass-bg-dark);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+      color: var(--vscode-foreground, #ccc);
+      border: 1px solid var(--glass-border-light);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
       font-size: 12px;
       font-family: var(--vscode-font-family);
       line-height: 1.5;
       white-space: pre-line;
       z-index: 1000;
       pointer-events: none;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      min-width: 200px;
+      box-shadow: var(--glass-shadow);
+      min-width: 220px;
       display: none;
+      animation: tooltipFadeIn var(--transition-fast) ease-out;
+    }
+
+    @keyframes tooltipFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .device-info-tooltip.visible {
@@ -272,13 +314,13 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .device-info-tooltip .info-row {
-      margin: 2px 0;
+      margin: 3px 0;
     }
 
     .device-info-tooltip .info-row-bottom {
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--glass-border);
     }
 
     .device-info-tooltip .info-label {
@@ -451,14 +493,31 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
       font-size: 13px;
       text-align: center;
-      padding: 24px;
+      padding: 28px 32px;
       max-width: 90%;
       white-space: pre-wrap;
       word-wrap: break-word;
-      background: var(--vscode-editor-background, #1e1e1e);
-      border-radius: 8px;
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      /* Glass-morphism */
+      background: var(--glass-bg);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--glass-border-light);
+      box-shadow: var(--glass-shadow);
       z-index: 10;
+      /* Entrance animation */
+      animation: statusFadeIn var(--transition-medium) ease-out;
+    }
+
+    @keyframes statusFadeIn {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
     }
 
     .status.hidden {
@@ -466,7 +525,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .status.warning {
-      border-color: var(--vscode-inputValidation-warningBorder, #cf9300);
+      border-color: rgba(207, 147, 0, 0.4);
+      background: rgba(30, 28, 20, 0.8);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -499,11 +559,11 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     .status .spinner {
       width: 48px;
       height: 48px;
-      border: 3px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
+      border: 3px solid rgba(255, 255, 255, 0.15);
       border-top-color: var(--vscode-focusBorder, #0078d4);
       border-radius: 50%;
       animation: spin 1s linear infinite;
-      margin: 0 auto 12px;
+      margin: 0 auto 16px;
     }
 
     @keyframes spin {
@@ -516,14 +576,18 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
     .stats {
       position: absolute;
-      bottom: 4px;
-      right: 4px;
-      background: var(--vscode-badge-background, rgba(0, 0, 0, 0.7));
+      bottom: 6px;
+      right: 6px;
+      /* Glass-morphism */
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       color: var(--vscode-badge-foreground, #888);
       font-family: var(--vscode-editor-font-family, monospace);
       font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 3px;
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--glass-border);
       z-index: 5;
       white-space: nowrap;
     }
@@ -534,24 +598,42 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
     .stats.extended {
       font-size: 9px;
-      padding: 3px 7px;
+      padding: 5px 12px;
     }
 
     /* Recording indicator */
     .recording-indicator {
       position: absolute;
-      top: 8px;
-      left: 8px;
+      top: 10px;
+      left: 10px;
       display: flex;
       align-items: center;
-      gap: 6px;
-      background: rgba(0, 0, 0, 0.7);
+      gap: 8px;
+      /* Glass-morphism with red tint */
+      background: rgba(200, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       color: #fff;
       font-family: var(--vscode-editor-font-family, monospace);
       font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 4px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: var(--glass-shadow-subtle);
       z-index: 5;
+      animation: recordingBadgeFadeIn var(--transition-fast) ease-out;
+    }
+
+    @keyframes recordingBadgeFadeIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
     }
 
     .recording-indicator.hidden {
@@ -562,7 +644,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #f00;
+      background: #fff;
       animation: recording-pulse 1.5s ease-in-out infinite;
     }
 
@@ -614,19 +696,37 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .reconnect-btn {
-      margin-top: 12px;
-      padding: 8px 16px;
-      background: var(--vscode-button-background, #0078d4);
-      color: var(--vscode-button-foreground, white);
-      border: none;
-      border-radius: 9999px;
+      margin-top: 16px;
+      padding: 10px 24px;
+      /* Glass-morphism */
+      background: var(--glass-bg);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+      color: var(--vscode-foreground, #fff);
+      border: 1px solid var(--glass-border-light);
+      border-radius: var(--radius-full);
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
+      font-weight: 500;
       font-family: var(--vscode-font-family);
+      transition: all var(--transition-fast);
+      box-shadow: var(--glass-shadow-subtle);
     }
 
     .reconnect-btn:hover {
-      background: var(--vscode-button-hoverBackground, #106ebe);
+      background: rgba(45, 45, 45, 0.85);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+      box-shadow: var(--glass-shadow);
+    }
+
+    .reconnect-btn:active {
+      transform: scale(0.98);
+    }
+
+    .reconnect-btn:focus-visible {
+      outline: 2px solid var(--vscode-focusBorder, #0078d4);
+      outline-offset: 2px;
     }
 
     /* Screenshot preview overlay */
@@ -636,12 +736,14 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.8);
+      background: var(--overlay-bg);
+      backdrop-filter: var(--overlay-blur);
+      -webkit-backdrop-filter: var(--overlay-blur);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 100;
-      backdrop-filter: blur(4px);
+      animation: overlayFadeIn var(--transition-medium) ease-out;
     }
 
     .screenshot-preview-overlay.visible {
@@ -649,16 +751,31 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .screenshot-preview-container {
-      background: var(--vscode-editor-background, #1e1e1e);
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-      border-radius: 8px;
-      padding: 12px;
+      /* Glass-morphism */
+      background: var(--glass-bg-dark);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+      border: 1px solid var(--glass-border-light);
+      border-radius: var(--radius-xl);
+      padding: 16px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      gap: 14px;
+      box-shadow: var(--glass-shadow);
       position: relative;
+      animation: modalSlideIn var(--transition-medium) ease-out;
+    }
+
+    @keyframes modalSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
 
     .screenshot-preview-header {
@@ -678,25 +795,31 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
     .screenshot-preview-close {
       position: absolute;
-      right: 12px;
-      top: 12px;
-      background: transparent;
+      right: 14px;
+      top: 14px;
+      background: rgba(255, 255, 255, 0.08);
       border: none;
       color: var(--vscode-foreground, #ccc);
       cursor: pointer;
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       opacity: 0.7;
-      transition: opacity 0.1s, background 0.1s;
+      transition: all var(--transition-fast);
     }
 
     .screenshot-preview-close:hover {
       opacity: 1;
-      background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+      background: rgba(255, 255, 255, 0.15);
+      transform: scale(1.05);
+    }
+
+    .screenshot-preview-close:focus-visible {
+      outline: 2px solid var(--vscode-focusBorder, #0078d4);
+      outline-offset: 2px;
     }
 
     .screenshot-preview-close svg {
@@ -708,28 +831,33 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       max-width: 85vw;
       max-height: 75vh;
       object-fit: contain;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
     }
 
     .screenshot-preview-actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       justify-content: center;
     }
 
     .screenshot-preview-btn {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 6px 16px;
-      background: var(--vscode-button-background, #0078d4);
-      color: var(--vscode-button-foreground, white);
-      border: none;
-      border-radius: 4px;
+      gap: 8px;
+      padding: 10px 20px;
+      /* Glass button */
+      background: rgba(0, 120, 212, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: var(--radius-full);
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
+      font-weight: 500;
       font-family: var(--vscode-font-family);
-      transition: background 0.1s;
+      transition: all var(--transition-fast);
+      box-shadow: var(--glass-shadow-subtle);
     }
 
     .screenshot-preview-btn svg {
@@ -739,25 +867,38 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .screenshot-preview-btn:hover {
-      background: var(--vscode-button-hoverBackground, #106ebe);
+      background: rgba(16, 110, 190, 0.95);
+      transform: translateY(-1px);
+      box-shadow: var(--glass-shadow);
+    }
+
+    .screenshot-preview-btn:active {
+      transform: scale(0.98);
+    }
+
+    .screenshot-preview-btn:focus-visible {
+      outline: 2px solid var(--vscode-focusBorder, #0078d4);
+      outline-offset: 2px;
     }
 
     .screenshot-preview-btn.secondary {
-      background: var(--vscode-button-secondaryBackground, #3a3d41);
-      color: var(--vscode-button-secondaryForeground, #ccc);
+      background: var(--glass-bg);
+      color: var(--vscode-foreground, #ccc);
+      border-color: var(--glass-border-light);
     }
 
     .screenshot-preview-btn.secondary:hover {
-      background: var(--vscode-button-secondaryHoverBackground, #45494e);
+      background: rgba(45, 45, 45, 0.85);
     }
 
     .reconnect-btn.primary {
-      background: var(--vscode-button-background, #0e639c);
-      color: var(--vscode-button-foreground, #fff);
+      background: rgba(0, 120, 212, 0.85);
+      border-color: rgba(255, 255, 255, 0.15);
+      color: #fff;
     }
 
     .reconnect-btn.primary:hover {
-      background: var(--vscode-button-hoverBackground, #1177bb);
+      background: rgba(16, 110, 190, 0.95);
     }
 
     /* Control Center overlay */
@@ -767,14 +908,16 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.4);
+      background: var(--overlay-bg);
+      backdrop-filter: var(--overlay-blur);
+      -webkit-backdrop-filter: var(--overlay-blur);
       display: none;
       align-items: flex-end;
       justify-content: flex-end;
       z-index: 100;
       padding: 12px;
       padding-bottom: 0;
-      animation: overlayFadeIn 0.2s ease-out;
+      animation: overlayFadeIn var(--transition-medium) ease-out;
       cursor: pointer;
     }
 
@@ -829,11 +972,20 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
     /* Floating opaque settings groups */
     .settings-group {
-      background: #1e1e1e;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 14px;
+      /* Glass-morphism */
+      background: var(--glass-bg-dark);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border-light);
+      border-radius: var(--radius-lg);
       overflow: hidden;
       flex-shrink: 0;
+      box-shadow: var(--glass-shadow-subtle);
+      transition: transform var(--transition-fast);
+    }
+
+    .settings-group:hover {
+      transform: translateY(-1px);
     }
 
     .settings-group-header {
@@ -1238,6 +1390,31 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     .settings-row-icon.icon-system {
       background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
       color: #333;
+    }
+
+    /* ===== Accessibility: Reduced Motion ===== */
+    @media (prefers-reduced-motion: reduce) {
+      .status,
+      .screenshot-preview-container,
+      .device-info-tooltip,
+      .recording-indicator,
+      .control-center-overlay,
+      .screenshot-preview-overlay {
+        animation: none;
+      }
+
+      .status .spinner {
+        animation: spin 2s linear infinite; /* Keep spinner but slower */
+      }
+
+      .reconnect-btn,
+      .screenshot-preview-btn,
+      .screenshot-preview-close,
+      .settings-group,
+      .toggle-switch,
+      .toggle-switch::after {
+        transition: none;
+      }
     }
   </style>
 </head>
