@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cycle buttons** - Replaced segmented controls with cycle buttons for Orientation, Dark Mode, and Navigation Mode that cycle through options on click
 - **Improved control contrast** - Enhanced toggle switches, sliders, and buttons with better visibility against dark backgrounds
 - **Clickable toggle rows** - Entire row is now clickable to toggle switches, not just the switch itself
-- **Compact layout** - Control center uses at most 50% of available height with hidden scrollbars
-- **Toolbar reorganization** - Power button moved to left group, Device Settings button moved to right group
+- **Compact layout** - Control center uses 75% width with hidden scrollbars, extends to toolbar edge
+- **Toolbar reorganization** - Power button moved to left group, Control Center button moved to right group
+- **OKLCH gradient mask** - Perceptually uniform fade effect at top edge when scrolling
+- **Renamed to Control Center** - Full codebase refactor from "Device Settings" to "Control Center"
 
 ### Added
 
@@ -25,11 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audio & Volume group** - Consolidated audio forwarding toggle with volume up/down buttons
 - **System Shortcuts group** - Quick access to Notification Panel and Settings Panel
 - **WiFi connection timeout** - Added 15 second timeout to prevent hanging on unreachable devices
+- **Control Center button active state** - Button highlights when Control Center is open (like macOS)
+- **Dimmed toolbar** - Other toolbar buttons dim when Control Center is open
+- **Click outside to close** - Clicking anywhere outside Control Center closes it
+- **Dynamic scroll fade** - Top fade effect only appears when scrolled down
 - Localization strings for new settings groups and controls
 
 ### Fixed
 
 - **Orientation change stale frame** - Canvas now clears immediately when changing orientation to avoid displaying outdated frames while waiting for new video stream
+- **Cycle button width** - Fixed width prevents slider resizing when label text changes
 
 ### Removed
 
