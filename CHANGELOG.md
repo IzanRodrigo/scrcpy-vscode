@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2025-12-18
+
 ### Changed
 
 - **iOS Control Center style UI** - Unified glass-morphism design with backdrop blur, entrance animations, and pill-shaped buttons across all overlays (status, screenshot preview, tooltip, recording indicator, stats badge)
@@ -129,6 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - English (default)
 - Spanish
 
+[0.1.4]: https://github.com/izantech/scrcpy-vscode/releases/tag/0.1.4
 [0.1.3]: https://github.com/izantech/scrcpy-vscode/releases/tag/0.1.3
 [0.1.2]: https://github.com/izantech/scrcpy-vscode/releases/tag/0.1.2
 [0.1.1]: https://github.com/izantech/scrcpy-vscode/releases/tag/0.1.1
