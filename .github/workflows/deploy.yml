@@ -51,8 +51,8 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           DATE=$(date +%Y-%m-%d)
 
-          # Insert new version header after [Unreleased], moving content under new version
-          sed -i "s/^## \[Unreleased\]$/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
+          # Replace [Unreleased] with the version being published
+          sed -i "s/^## \[Unreleased\]$/## [$VERSION] - $DATE/" CHANGELOG.md
 
           # Add version link at the top of the links section
           sed -i "0,/^\[0\.[0-9]/s//[$VERSION]: https:\/\/github.com\/izantech\/scrcpy-vscode\/releases\/tag\/$VERSION\n&/" CHANGELOG.md
