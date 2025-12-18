@@ -305,6 +305,7 @@ describe('DeviceService', () => {
       expect(execFile).toHaveBeenCalledWith(
         'adb',
         ['connect', '192.168.1.100:5555'],
+        { timeout: 15000 },
         expect.any(Function)
       );
       expect(result.serial).toBe('192.168.1.100:5555');
