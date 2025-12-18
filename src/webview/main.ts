@@ -2513,8 +2513,10 @@ function attachSettingsEventHandlers() {
       btn.addEventListener('click', () => {
         if (action === 'notificationPanel') {
           vscode.postMessage({ type: 'expandNotificationPanel' });
+          closeControlCenter();
         } else if (action === 'settingsPanel') {
           vscode.postMessage({ type: 'expandSettingsPanel' });
+          closeControlCenter();
         }
       });
     }
