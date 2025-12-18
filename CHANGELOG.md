@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Redesigned Device Settings popup** - Complete visual overhaul with grouped sections (Display, Appearance, Audio & Volume, System Shortcuts, Accessibility, Developer)
+- **Redesigned Control Center** - Complete visual overhaul with floating opaque sections (Display, Appearance, Audio & Volume, System Shortcuts, Accessibility, Developer)
+- **Floating sections** - Removed container wrapper, sections now float independently with opaque backgrounds
+- **Collapsible sections** - Click section headers to collapse/expand, state persists across sessions via localStorage
 - **New setting icons** - Each setting now has a distinctive colorful gradient icon (moon for dark mode, palette for appearance group, accessibility symbols, etc.)
 - **Cycle buttons** - Replaced segmented controls with cycle buttons for Orientation, Dark Mode, and Navigation Mode that cycle through options on click
-- **Improved controls** - Enhanced toggle switches and sliders with better visibility and smoother animations
+- **Improved control contrast** - Enhanced toggle switches, sliders, and buttons with better visibility against dark backgrounds
 - **Clickable toggle rows** - Entire row is now clickable to toggle switches, not just the switch itself
-- **Slide-in animation** - Settings popup now animates in with a subtle bounce effect
-- **Scrollable settings** - Settings popup now has max height (50vh) with vertical scrolling for better usability
+- **Compact layout** - Control center uses at most 50% of available height with hidden scrollbars
 - **Toolbar reorganization** - Power button moved to left group, Device Settings button moved to right group
 
 ### Added
@@ -23,12 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Display group** - New settings group with screen orientation control (Auto/Portrait/Landscape)
 - **Audio & Volume group** - Consolidated audio forwarding toggle with volume up/down buttons
 - **System Shortcuts group** - Quick access to Notification Panel and Settings Panel
+- **WiFi connection timeout** - Added 15 second timeout to prevent hanging on unreachable devices
 - Localization strings for new settings groups and controls
+
+### Fixed
+
+- **Orientation change stale frame** - Canvas now clears immediately when changing orientation to avoid displaying outdated frames while waiting for new video stream
 
 ### Removed
 
-- **Contextual dropdown menu** - Replaced by unified Device Settings popup with all controls
-- **Standalone rotation button** - Orientation now controlled via Display group in settings popup
+- **Contextual dropdown menu** - Replaced by unified Control Center popup with all controls
+- **Standalone rotation button** - Orientation now controlled via Display group in Control Center
 
 ## [0.1.3] - 2025-12-16
 

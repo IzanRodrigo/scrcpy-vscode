@@ -396,28 +396,21 @@ function initialize() {
   deviceSettingsContent = document.getElementById('device-settings-content');
   deviceSettingsBtn = document.getElementById('device-settings-btn');
 
-  const deviceSettingsTitle = document.getElementById('device-settings-title');
-  if (deviceSettingsTitle) {
-    deviceSettingsTitle.textContent = window.l10n.deviceSettings;
-  }
-
   if (deviceSettingsBtn) {
     deviceSettingsBtn.addEventListener('click', () => {
       openDeviceSettings();
     });
   }
 
-  const deviceSettingsClose = document.getElementById('device-settings-close');
-  if (deviceSettingsClose) {
-    deviceSettingsClose.addEventListener('click', () => {
-      closeDeviceSettings();
-    });
-  }
-
-  // Close device settings when clicking outside
+  // Close device settings when clicking overlay or sections container (but not the sections themselves)
   if (deviceSettingsOverlay) {
     deviceSettingsOverlay.addEventListener('click', (e) => {
-      if (e.target === deviceSettingsOverlay) {
+      const target = e.target as HTMLElement;
+      // Close if clicking the overlay or the sections container, but not inside a settings-group
+      if (
+        target === deviceSettingsOverlay ||
+        target.classList.contains('device-settings-sections')
+      ) {
         closeDeviceSettings();
       }
     });
@@ -1837,19 +1830,99 @@ function createSettingsRow(
 }
 
 /**
- * Create a settings group with header
+ * Get collapsed sections from localStorage
  */
-function createSettingsGroup(headerText: string, headerIcon: string): HTMLElement {
+function getCollapsedSections(): Set<string> {
+  try {
+    const stored = localStorage.getItem('deviceSettingsCollapsed');
+    if (stored) {
+      return new Set(JSON.parse(stored));
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return new Set();
+}
+
+/**
+ * Save collapsed sections to localStorage
+ */
+function saveCollapsedSections(collapsed: Set<string>): void {
+  try {
+    localStorage.setItem('deviceSettingsCollapsed', JSON.stringify([...collapsed]));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Create a settings group with header (collapsible)
+ */
+function createSettingsGroup(groupId: string, headerText: string, headerIcon: string): HTMLElement {
   const group = document.createElement('div');
   group.className = 'settings-group';
+  group.dataset.groupId = groupId;
+
+  // Check if this section should be collapsed
+  const collapsedSections = getCollapsedSections();
+  if (collapsedSections.has(groupId)) {
+    group.classList.add('collapsed');
+  }
 
   const header = document.createElement('div');
   header.className = 'settings-group-header';
-  header.innerHTML = headerIcon;
+
+  // Add icon using template
+  const iconTemplate = document.createElement('template');
+  iconTemplate.innerHTML = headerIcon.trim();
+  if (iconTemplate.content.firstChild) {
+    header.appendChild(iconTemplate.content.firstChild);
+  }
+
   const headerSpan = document.createElement('span');
   headerSpan.textContent = headerText;
   header.appendChild(headerSpan);
+
+  // Add chevron icon using safe DOM creation
+  const chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  const chevronSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  chevronSvg.setAttribute('viewBox', '0 0 24 24');
+  chevronSvg.setAttribute('fill', 'currentColor');
+  const chevronPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  chevronPath.setAttribute('d', 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z');
+  chevronSvg.appendChild(chevronPath);
+  chevron.appendChild(chevronSvg);
+  header.appendChild(chevron);
+
+  // Toggle collapse on header click
+  header.addEventListener('click', () => {
+    group.classList.toggle('collapsed');
+    const sections = getCollapsedSections();
+    if (group.classList.contains('collapsed')) {
+      sections.add(groupId);
+    } else {
+      sections.delete(groupId);
+    }
+    saveCollapsedSections(sections);
+  });
+
   group.appendChild(header);
+
+  // Content wrapper for collapse
+  const content = document.createElement('div');
+  content.className = 'settings-group-content';
+  group.appendChild(content);
+
+  // Override appendChild to add to content instead of group
+  const originalAppendChild = group.appendChild.bind(group);
+  group.appendChild = function <T extends Node>(node: T): T {
+    if ((node as Node) === header || (node as Node) === content) {
+      return originalAppendChild(node);
+    }
+    content.appendChild(node);
+    return node;
+  };
 
   return group;
 }
@@ -2077,7 +2150,7 @@ function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean)
   };
 
   // === DISPLAY GROUP ===
-  const displayGroup = createSettingsGroup(window.l10n.display, groupIcons.display);
+  const displayGroup = createSettingsGroup('display', window.l10n.display, groupIcons.display);
 
   // Screen Orientation
   const orientationIcons = {
@@ -2109,7 +2182,11 @@ function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean)
   deviceSettingsContent.appendChild(displayGroup);
 
   // === APPEARANCE GROUP ===
-  const appearanceGroup = createSettingsGroup(window.l10n.appearance, groupIcons.appearance);
+  const appearanceGroup = createSettingsGroup(
+    'appearance',
+    window.l10n.appearance,
+    groupIcons.appearance
+  );
 
   // Dark Mode
   const darkModeIcons = {
@@ -2193,7 +2270,7 @@ function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean)
   deviceSettingsContent.appendChild(appearanceGroup);
 
   // === AUDIO & VOLUME GROUP ===
-  const audioGroup = createSettingsGroup(window.l10n.audioVolume, groupIcons.audioVolume);
+  const audioGroup = createSettingsGroup('audio', window.l10n.audioVolume, groupIcons.audioVolume);
 
   // Audio Forwarding
   const audioToggle = createToggleSwitch('audioEnabled', settings.audioEnabled, disabled);
@@ -2215,7 +2292,11 @@ function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean)
   deviceSettingsContent.appendChild(audioGroup);
 
   // === SYSTEM SHORTCUTS GROUP ===
-  const systemGroup = createSettingsGroup(window.l10n.systemShortcuts, groupIcons.systemShortcuts);
+  const systemGroup = createSettingsGroup(
+    'system',
+    window.l10n.systemShortcuts,
+    groupIcons.systemShortcuts
+  );
 
   // System shortcut buttons row
   const systemButtonsRow = document.createElement('div');
@@ -2237,6 +2318,7 @@ function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean)
 
   // === ACCESSIBILITY GROUP ===
   const accessibilityGroup = createSettingsGroup(
+    'accessibility',
     window.l10n.accessibility,
     groupIcons.accessibility
   );
@@ -2265,7 +2347,11 @@ function renderDeviceSettingsForm(settings: DeviceUISettings, disabled: boolean)
   deviceSettingsContent.appendChild(accessibilityGroup);
 
   // === DEVELOPER GROUP ===
-  const developerGroup = createSettingsGroup(window.l10n.developer, groupIcons.developer);
+  const developerGroup = createSettingsGroup(
+    'developer',
+    window.l10n.developer,
+    groupIcons.developer
+  );
 
   // Show Layout Bounds
   const layoutBoundsToggle = createToggleSwitch(
@@ -2337,6 +2423,11 @@ function attachSettingsEventHandlers() {
 
       // Handle special cases
       if (setting === 'orientation') {
+        // Clear canvas immediately to avoid showing stale frame during rotation
+        if (activeDeviceId) {
+          const session = sessions.get(activeDeviceId);
+          session?.videoRenderer.clear();
+        }
         vscode.postMessage({ type: 'rotateDevice' });
         return;
       }

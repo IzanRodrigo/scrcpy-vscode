@@ -733,6 +733,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       padding: 12px;
       padding-bottom: 52px;
       animation: overlayFadeIn 0.2s ease-out;
+      cursor: pointer;
     }
 
     @keyframes overlayFadeIn {
@@ -740,145 +741,82 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       to { opacity: 1; }
     }
 
-    @keyframes panelSlideIn {
-      from {
-        opacity: 0;
-        transform: translateY(12px) scale(0.97);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
-    }
-
     .device-settings-overlay.visible {
       display: flex;
     }
 
-    .device-settings-container {
-      background: var(--vscode-editor-background, #1e1e1e);
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.12));
-      border-radius: 12px;
+    /* Floating sections container */
+    .device-settings-sections {
       display: flex;
       flex-direction: column;
-      box-shadow: 
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-        0 20px 50px -10px rgba(0, 0, 0, 0.5),
-        0 8px 20px -8px rgba(0, 0, 0, 0.4);
-      position: relative;
+      gap: 10px;
+      max-height: 50%;
+      max-width: 380px;
       width: 92%;
-      max-width: 420px;
-      max-height: 50vh;
-      overflow: hidden;
-      animation: panelSlideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      overflow: auto;
+      cursor: default;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding: 2px;
     }
 
-    .device-settings-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 18px 14px;
-      border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
-      background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.03) 0%,
-        transparent 100%
-      );
+    .device-settings-sections::-webkit-scrollbar {
+      display: none;
     }
 
-    .device-settings-title {
-      font-family: var(--vscode-font-family);
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--vscode-foreground, #e0e0e0);
-      letter-spacing: -0.2px;
-    }
-
-    .device-settings-close {
-      background: transparent;
-      border: none;
-      color: var(--vscode-foreground, #ccc);
-      cursor: pointer;
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 6px;
-      opacity: 0.6;
-      transition: all 0.15s ease;
-    }
-
-    .device-settings-close:hover {
-      opacity: 1;
-      background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
-      transform: scale(1.05);
-    }
-
-    .device-settings-close:active {
-      transform: scale(0.95);
-    }
-
-    .device-settings-close svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    .device-settings-content {
-      padding: 8px 14px 16px;
-      overflow-y: auto;
-      overflow-x: hidden;
-      flex: 1;
-      min-height: 0;
-    }
-
-    .device-settings-content::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    .device-settings-content::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .device-settings-content::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 4px;
-    }
-
-    .device-settings-content::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
-
-    /* Settings Groups */
+    /* Floating opaque settings groups */
     .settings-group {
-      background: var(--vscode-input-background, rgba(255, 255, 255, 0.04));
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
-      border-radius: 10px;
-      margin-bottom: 12px;
+      background: #1e1e1e;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
       overflow: hidden;
-    }
-
-    .settings-group:last-child {
-      margin-bottom: 0;
+      flex-shrink: 0;
     }
 
     .settings-group-header {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 14px 6px;
+      padding: 10px 14px;
       font-family: var(--vscode-font-family);
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--vscode-descriptionForeground, #888);
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease;
+    }
+
+    .settings-group-header:hover {
+      color: var(--vscode-foreground, #ccc);
     }
 
     .settings-group-header svg {
       width: 14px;
       height: 14px;
       opacity: 0.7;
+    }
+
+    .settings-group-header .chevron {
+      margin-left: auto;
+      width: 16px;
+      height: 16px;
+      opacity: 0.5;
+      transition: transform 0.2s ease, opacity 0.15s ease;
+    }
+
+    .settings-group-header:hover .chevron {
+      opacity: 0.8;
+    }
+
+    .settings-group.collapsed .settings-group-header .chevron {
+      transform: rotate(-90deg);
+    }
+
+    .settings-group.collapsed .settings-group-content {
+      display: none;
     }
 
     .settings-row {
@@ -988,8 +926,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       position: relative;
       width: 44px;
       height: 26px;
-      background: var(--vscode-input-background, rgba(255, 255, 255, 0.15));
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 13px;
       cursor: pointer;
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1044,10 +982,10 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       justify-content: center;
       gap: 8px;
       padding: 8px 14px;
-      background: var(--vscode-input-background, rgba(255, 255, 255, 0.08));
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 8px;
-      color: var(--vscode-foreground, #ccc);
+      color: var(--vscode-foreground, #e0e0e0);
       font-family: var(--vscode-font-family);
       font-size: 12px;
       cursor: pointer;
@@ -1057,8 +995,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .cycle-button:hover:not(.disabled) {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.25);
     }
 
     .cycle-button:active:not(.disabled) {
@@ -1106,8 +1044,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       height: 6px;
       -webkit-appearance: none;
       appearance: none;
-      background: var(--vscode-input-background, rgba(255, 255, 255, 0.15));
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 3px;
       outline: none;
       cursor: pointer;
@@ -1161,11 +1099,11 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       font-family: var(--vscode-editor-font-family, monospace);
       font-size: 11px;
       font-weight: 500;
-      color: var(--vscode-descriptionForeground, #888);
+      color: var(--vscode-foreground, #ccc);
       min-width: 52px;
       flex-shrink: 0;
       text-align: right;
-      background: var(--vscode-input-background, rgba(255, 255, 255, 0.04));
+      background: rgba(255, 255, 255, 0.1);
       padding: 4px 8px;
       border-radius: 4px;
     }
@@ -1177,9 +1115,9 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       justify-content: center;
       gap: 6px;
       padding: 8px 14px;
-      background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.08));
-      color: var(--vscode-button-secondaryForeground, #ccc);
-      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--vscode-foreground, #e0e0e0);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 8px;
       cursor: pointer;
       font-family: var(--vscode-font-family);
@@ -1191,12 +1129,11 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
     }
 
     .settings-action-btn:hover {
-      background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.12));
-      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.18);
     }
 
     .settings-action-btn:active {
-      transform: translateY(0) scale(0.98);
+      transform: scale(0.98);
     }
 
     .settings-action-btn svg {
@@ -1307,16 +1244,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
   <!-- Device Settings Popup Overlay -->
   <div id="device-settings-overlay" class="device-settings-overlay">
-    <div class="device-settings-container">
-      <div class="device-settings-header">
-        <span class="device-settings-title" id="device-settings-title"></span>
-        <button id="device-settings-close" class="device-settings-close">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg>
-        </button>
-      </div>
-      <div class="device-settings-content" id="device-settings-content">
-        <!-- Settings content will be populated dynamically -->
-      </div>
+    <div class="device-settings-sections" id="device-settings-content">
+      <!-- Floating settings sections populated dynamically -->
     </div>
   </div>
   <script nonce="${nonce}">

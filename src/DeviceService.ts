@@ -423,7 +423,7 @@ export class DeviceService {
     const adbCmd = this.getAdbCommand();
 
     return new Promise((resolve, reject) => {
-      execFile(adbCmd, ['connect', address], (error, stdout, stderr) => {
+      execFile(adbCmd, ['connect', address], { timeout: 15000 }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
           return;
