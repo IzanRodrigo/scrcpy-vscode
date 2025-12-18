@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Display group** - New settings group with screen orientation control (Auto/Portrait/Landscape)
+- **Proper orientation control** - Orientation button now sets device rotation lock via ADB settings instead of just rotating 90°
 - **Audio & Volume group** - Consolidated audio forwarding toggle with volume up/down buttons
 - **System Shortcuts group** - Quick access to Notification Panel and Settings Panel
 - **WiFi connection timeout** - Added 15 second timeout to prevent hanging on unreachable devices
@@ -37,11 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Orientation change stale frame** - Canvas now clears immediately when changing orientation to avoid displaying outdated frames while waiting for new video stream
 - **Cycle button width** - Fixed width prevents slider resizing when label text changes
+- **Orientation flash** - Fixed brief wrong orientation when switching modes by setting user_rotation before disabling auto-rotate
 
 ### Removed
 
 - **Contextual dropdown menu** - Replaced by unified Control Center popup with all controls
 - **Standalone rotation button** - Orientation now controlled via Display group in Control Center
+- **Select to Speak toggle** - Removed as it's incompatible with scrcpy's touch injection
 
 ## [0.1.3] - 2025-12-16
 
