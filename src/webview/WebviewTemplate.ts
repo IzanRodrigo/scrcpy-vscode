@@ -17,7 +17,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
   const power = vscode.l10n.t('Power');
   const startRecording = vscode.l10n.t('Start recording');
   const startIOSInput = vscode.l10n.t('Start iOS Input Control');
-  const startWdaOverlay = vscode.l10n.t('Start WDA to enable touch input');
+  const startWdaOverlay = vscode.l10n.t('Launch WDA for touch input');
   const controlCenter = vscode.l10n.t('Control Center');
 
   // Bundle of strings for dynamic updates in main.ts
@@ -597,24 +597,68 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--vscode-button-secondaryBackground, #3a3d41);
-      background: var(--vscode-button-secondaryBackground, #3a3d41);
-      color: var(--vscode-button-secondaryForeground, #ccc);
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      background: var(--vscode-button-background, #0078d4);
+      color: var(--vscode-button-foreground, #fff);
       cursor: pointer;
       font-family: var(--vscode-font-family);
-      font-size: 12px;
-      transition: background 0.1s;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
 
-    .wda-overlay button:hover {
-      background: var(--vscode-button-secondaryHoverBackground, #45494e);
+    .wda-overlay button:hover:not(.loading) {
+      transform: scale(1.05);
+      background: var(--vscode-button-hoverBackground, #026ec1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .wda-overlay button:active:not(.loading) {
+      transform: scale(0.98);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
     }
 
     .wda-overlay button.loading {
       pointer-events: none;
-      opacity: 0.7;
+      cursor: wait;
+    }
+
+    .wda-overlay button.loading::before {
+      content: '';
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: var(--vscode-button-foreground, #fff);
+      border-radius: 50%;
+      animation: wda-spin 0.8s linear infinite;
+    }
+
+    @keyframes wda-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .wda-overlay button.action-required {
+      background: var(--vscode-inputValidation-warningBackground, #352a05);
+      border: 1px solid var(--vscode-inputValidation-warningBorder, #cf9300);
+      animation: none;
+    }
+
+    .wda-overlay button.action-required:hover {
+      background: var(--vscode-inputValidation-warningBackground, #352a05);
+      opacity: 0.9;
+    }
+
+    .wda-overlay button.error {
+      background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+      border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+    }
+
+    .wda-overlay button.error:hover {
+      background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+      opacity: 0.9;
     }
 
     /* Info overlay - appears on top of video with semi-transparent background */

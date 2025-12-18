@@ -76,6 +76,33 @@ export interface DeviceDetailedInfo {
 }
 
 /**
+ * WDA setup process state
+ */
+export type WDASetupState =
+  | 'idle'
+  | 'checking_xcode'
+  | 'checking_iproxy'
+  | 'checking_device'
+  | 'cloning_wda'
+  | 'configuring'
+  | 'building'
+  | 'starting'
+  | 'ready'
+  | 'error'
+  | 'cancelled';
+
+/**
+ * WDA setup status with UI-relevant information
+ */
+export interface WDASetupStatus {
+  state: WDASetupState;
+  message?: string;
+  error?: string;
+  requiresUserAction: boolean;
+  userActionInstructions?: string[];
+}
+
+/**
  * Dark mode setting values
  */
 export type DarkMode = 'auto' | 'light' | 'dark';
@@ -164,6 +191,8 @@ export interface AppState {
   allowedAutoConnectDevices: Set<string>;
   blockedAutoConnectDevices: Set<string>;
   controlCenterCache: Record<string, DeviceUISettings>;
+  /** WDA setup status per device (iOS only) */
+  wdaSetupStatus: Map<string, WDASetupStatus>;
 }
 
 /**
@@ -187,4 +216,6 @@ export interface AppStateSnapshot {
   allowedAutoConnectDevices: string[];
   blockedAutoConnectDevices: string[];
   controlCenterCache: Record<string, DeviceUISettings>;
+  /** WDA setup status per device (iOS only) */
+  wdaSetupStatus: Record<string, WDASetupStatus>;
 }

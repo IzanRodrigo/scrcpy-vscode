@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - iproxy USB port forwarding for WDA connection
   - WDA status indicator in device tooltip (connected/connecting/unavailable/disabled)
   - **WDA overlay button** - Shows "Start WDA" pill button on iOS video when touch input is unavailable, allowing quick launch of WDA
+  - **In-extension WDA setup** - Click overlay button to run WebDriverAgent setup directly in VS Code
+  - Progress states shown on button (Checking Xcode, Building, Starting, etc.)
+  - Modal dialogs guide user through required actions (install Xcode, configure signing, connect device)
+  - Button shows spinner during setup, "Action Required" state when user input needed, error state with retry option
   - **Rotation control** - Rotate iOS device screen via WDA when connected
   - **Clipboard sync** - Bidirectional clipboard sync between PC and iOS device (Ctrl+C/Ctrl+V)
   - **App launcher** - Launch iOS apps by bundle ID, with searchable app list

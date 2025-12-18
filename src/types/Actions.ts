@@ -4,6 +4,7 @@ import {
   DeviceUISettings,
   StatusMessage,
   ToolStatus,
+  WDASetupStatus,
   WebviewSettings,
 } from './AppState';
 
@@ -29,6 +30,7 @@ export enum ActionType {
   UPDATE_DEVICE_SETTING_IN_CACHE = 'UPDATE_DEVICE_SETTING_IN_CACHE',
   ADD_BLOCKED_AUTO_CONNECT = 'ADD_BLOCKED_AUTO_CONNECT',
   REMOVE_BLOCKED_AUTO_CONNECT = 'REMOVE_BLOCKED_AUTO_CONNECT',
+  SET_WDA_SETUP_STATUS = 'SET_WDA_SETUP_STATUS',
 }
 
 export interface AddDeviceAction {
@@ -137,6 +139,11 @@ export interface RemoveBlockedAutoConnectAction {
   payload: { serial: string };
 }
 
+export interface SetWDASetupStatusAction {
+  type: ActionType.SET_WDA_SETUP_STATUS;
+  payload: { deviceId: string; status: WDASetupStatus | null };
+}
+
 export type AppAction =
   | AddDeviceAction
   | RemoveDeviceAction
@@ -158,4 +165,5 @@ export type AppAction =
   | SaveControlCenterToCacheAction
   | UpdateDeviceSettingInCacheAction
   | AddBlockedAutoConnectAction
-  | RemoveBlockedAutoConnectAction;
+  | RemoveBlockedAutoConnectAction
+  | SetWDASetupStatusAction;

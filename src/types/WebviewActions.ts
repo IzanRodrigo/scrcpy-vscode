@@ -119,7 +119,12 @@ export type WebviewAction =
       type: 'applyControlCenterSetting';
       setting: keyof DeviceUISettings;
       value: DeviceUISettings[keyof DeviceUISettings];
-    };
+    }
+
+  // iOS WDA Setup
+  | { type: 'startWDASetup' }
+  | { type: 'cancelWDASetup' }
+  | { type: 'continueWDASetup' };
 
 /**
  * Type guard to check if an object is a WebviewAction

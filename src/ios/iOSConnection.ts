@@ -199,14 +199,17 @@ export class iOSConnection implements IDeviceConnection {
   async startWda(): Promise<boolean> {
     // Allow manual retry even after prior failures
     this.wdaUnavailable = false;
-    return this.initializeWDA(true);
+    // Manual start bypasses wdaEnabled check - user explicitly requested WDA
+    return this.initializeWDA(true, true);
   }
 
   /**
    * Initialize WebDriverAgent connection via iproxy
+   * @param force - Force retry even if previously marked unavailable
+   * @param bypassEnabledCheck - Skip wdaEnabled check (for manual starts)
    */
-  private async initializeWDA(force = false): Promise<boolean> {
-    if (!this.deviceSerial || !this.wdaEnabled) {
+  private async initializeWDA(force = false, bypassEnabledCheck = false): Promise<boolean> {
+    if (!this.deviceSerial || (!bypassEnabledCheck && !this.wdaEnabled)) {
       return false;
     }
 
@@ -226,7 +229,7 @@ export class iOSConnection implements IDeviceConnection {
     // the port is already forwarded and we don't need to start our own iproxy process.
     try {
       const status = await this.wdaClient.checkStatus();
-      if (status?.ready !== false) {
+      if (status?.ready) {
         // Pre-create session to avoid latency on first touch
         await this.wdaClient.initSession();
         this.wdaReady = true;
@@ -235,7 +238,8 @@ export class iOSConnection implements IDeviceConnection {
         await this.refreshWdaWindowSize();
         this.onStatus?.('WDA: Connected, input enabled');
         return true;
-      } else {
+      } else if (status) {
+        // Status returned but not ready
         this.onStatus?.('WDA: Not ready, input disabled');
         this.wdaUnavailable = true;
         this.wdaClient = null;
@@ -243,8 +247,10 @@ export class iOSConnection implements IDeviceConnection {
         this.stopIproxy();
         return false;
       }
-    } catch (error) {
+      // status is null - connection failed, fall through to iproxy
       console.log('[WDA] Direct connection unavailable, trying iproxy...');
+    } catch (error) {
+      console.log('[WDA] Direct connection error, trying iproxy...');
     }
 
     // Fall back to starting iproxy (best-effort).
@@ -271,7 +277,7 @@ export class iOSConnection implements IDeviceConnection {
       }
 
       const status = await wdaClient.checkStatus();
-      if (status?.ready !== false) {
+      if (status?.ready) {
         // Pre-create session to avoid latency on first touch
         await wdaClient.initSession();
         this.wdaReady = true;
@@ -281,7 +287,8 @@ export class iOSConnection implements IDeviceConnection {
         this.onStatus?.('WDA: Connected, input enabled');
         return true;
       } else {
-        this.onStatus?.('WDA: Not ready, input disabled');
+        // status is null or not ready
+        this.onStatus?.('WDA: Not available, input disabled');
         this.wdaUnavailable = true;
         this.wdaClient = null;
         this.updateCapabilities(false);
@@ -290,7 +297,7 @@ export class iOSConnection implements IDeviceConnection {
       }
     } catch (error) {
       console.error('[WDA] Connection failed:', error);
-      this.onStatus?.('WDA: Connection failed, input disabled');
+      this.onStatus?.('WDA: Connection failed');
       this.wdaUnavailable = true;
       this.wdaClient = null;
       this.updateCapabilities(false);

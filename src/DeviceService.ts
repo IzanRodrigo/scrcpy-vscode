@@ -29,6 +29,7 @@ import { ActionType } from './types/Actions';
 import { getCapabilities, isIOSSupportAvailable } from './PlatformCapabilities';
 import { iOSConnection, iOSDeviceManager, mapIOSProductType } from './ios';
 import type { iOSConnectionConfig } from './ios/iOSConnection';
+import { WDASetupManager, WDASetupStatus } from './ios/WDASetupManager';
 
 // Re-export types for backward compatibility
 export type { DeviceInfo, DeviceDetailedInfo, ConnectionState };
@@ -124,6 +125,9 @@ export class DeviceService {
     webDriverAgentEnabled: false,
     webDriverAgentPort: 8100,
   };
+
+  // WDA setup managers per device
+  private wdaSetupManagers = new Map<string, WDASetupManager>();
 
   constructor(
     private appState: AppStateManager,
@@ -1405,6 +1409,9 @@ export class DeviceService {
       return;
     }
 
+    // Cancel any running WDA setup
+    this.cancelWDASetup(deviceId);
+
     // Mark as manually closed to prevent auto-reconnect
     const deviceSerial = session.deviceInfo.serial;
     this.knownDeviceSerials.add(deviceSerial);
@@ -1639,14 +1646,6 @@ export class DeviceService {
       return;
     }
 
-    if (!this.iosConfig.webDriverAgentEnabled) {
-      this.statusCallback(
-        session.deviceId,
-        vscode.l10n.t('Enable WebDriverAgent in settings to start iOS input control.')
-      );
-      return;
-    }
-
     const connection = session.connection;
     if (!connection || !this.isiOSConnection(connection)) {
       return;
@@ -1685,6 +1684,142 @@ export class DeviceService {
       type: ActionType.UPDATE_DEVICE,
       payload: { deviceId: session.deviceId, updates: { capabilities: connection.capabilities } },
     });
+  }
+
+  // ==================== WDA Setup Management ====================
+
+  /**
+   * Start WDA setup process for an iOS device
+   */
+  async startWDASetup(extensionUri: vscode.Uri, deviceId?: string): Promise<void> {
+    const session = deviceId ? this.sessions.get(deviceId) : this.getActiveSession();
+    if (!session || session.deviceInfo.platform !== 'ios') {
+      return;
+    }
+
+    // Check if already running
+    const existingManager = this.wdaSetupManagers.get(session.deviceId);
+    if (existingManager?.isRunning) {
+      return;
+    }
+
+    // Create new manager
+    const manager = new WDASetupManager(extensionUri);
+    this.wdaSetupManagers.set(session.deviceId, manager);
+
+    // Handle state changes
+    manager.on('state-change', (status: WDASetupStatus) => {
+      this.appState.dispatch({
+        type: ActionType.SET_WDA_SETUP_STATUS,
+        payload: { deviceId: session.deviceId, status },
+      });
+
+      // On success, re-attempt WDA connection
+      if (status.state === 'ready') {
+        this.handleWDASetupComplete(session.deviceId);
+      }
+    });
+
+    // Handle user action required - show modal dialog
+    manager.on('user-action-required', (status: WDASetupStatus) => {
+      this.showWDAUserActionDialog(session.deviceId, status);
+    });
+
+    // Handle errors
+    manager.on('error', (error: Error) => {
+      console.error('[DeviceService] WDA setup error:', error);
+      this.errorCallback(
+        session.deviceId,
+        vscode.l10n.t('WDA setup failed: {0}', error.message),
+        error
+      );
+    });
+
+    // Log output for debugging
+    manager.on('output', (line: string) => {
+      console.log('[WDA Setup]', line);
+    });
+
+    // Start the setup process
+    await manager.start();
+  }
+
+  /**
+   * Cancel WDA setup for a device
+   */
+  cancelWDASetup(deviceId?: string): void {
+    const session = deviceId ? this.sessions.get(deviceId) : this.getActiveSession();
+    if (!session) {
+      return;
+    }
+
+    const manager = this.wdaSetupManagers.get(session.deviceId);
+    if (manager) {
+      manager.cancel();
+      this.wdaSetupManagers.delete(session.deviceId);
+      this.appState.dispatch({
+        type: ActionType.SET_WDA_SETUP_STATUS,
+        payload: { deviceId: session.deviceId, status: null },
+      });
+    }
+  }
+
+  /**
+   * Continue WDA setup after user completes required action
+   */
+  continueWDASetup(deviceId?: string): void {
+    const session = deviceId ? this.sessions.get(deviceId) : this.getActiveSession();
+    if (!session) {
+      return;
+    }
+
+    const manager = this.wdaSetupManagers.get(session.deviceId);
+    manager?.continueAfterUserAction();
+  }
+
+  /**
+   * Show modal dialog for user action required during WDA setup
+   */
+  private async showWDAUserActionDialog(deviceId: string, status: WDASetupStatus): Promise<void> {
+    const instructions = status.userActionInstructions?.join('\n\n') || '';
+    const message = status.message || 'Action required';
+
+    const result = await vscode.window.showInformationMessage(
+      `${message}\n\n${instructions}`,
+      { modal: true },
+      vscode.l10n.t('Continue'),
+      vscode.l10n.t('Cancel Setup')
+    );
+
+    if (result === vscode.l10n.t('Continue')) {
+      this.continueWDASetup(deviceId);
+    } else {
+      this.cancelWDASetup(deviceId);
+    }
+  }
+
+  /**
+   * Handle WDA setup completion
+   */
+  private async handleWDASetupComplete(deviceId: string): Promise<void> {
+    // Re-attempt WDA connection
+    await this.startIOSInput(deviceId);
+
+    // Clear setup status
+    this.appState.dispatch({
+      type: ActionType.SET_WDA_SETUP_STATUS,
+      payload: { deviceId, status: null },
+    });
+
+    // Clean up manager
+    const manager = this.wdaSetupManagers.get(deviceId);
+    if (manager) {
+      manager.dispose();
+      this.wdaSetupManagers.delete(deviceId);
+    }
+
+    // Notify user
+    vscode.window.showInformationMessage(vscode.l10n.t('iOS input control enabled!'));
   }
 
   rotateDevice(): void {

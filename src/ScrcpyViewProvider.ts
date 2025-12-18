@@ -643,8 +643,22 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         break;
 
       case 'startIOSInput':
+      case 'startWDASetup':
+        // Start the WDA setup process
         if (this._deviceService) {
-          await this._deviceService.startIOSInput(message.deviceId);
+          await this._deviceService.startWDASetup(this._extensionUri);
+        }
+        break;
+
+      case 'cancelWDASetup':
+        if (this._deviceService) {
+          this._deviceService.cancelWDASetup();
+        }
+        break;
+
+      case 'continueWDASetup':
+        if (this._deviceService) {
+          this._deviceService.continueWDASetup();
         }
         break;
 

@@ -113,6 +113,30 @@ interface StatusMessage {
 /**
  * Complete state snapshot from extension (single source of truth)
  */
+/**
+ * WDA setup state
+ */
+type WDASetupState =
+  | 'idle'
+  | 'checking_xcode'
+  | 'checking_iproxy'
+  | 'checking_device'
+  | 'cloning_wda'
+  | 'configuring'
+  | 'building'
+  | 'starting'
+  | 'ready'
+  | 'error'
+  | 'cancelled';
+
+interface WDASetupStatus {
+  state: WDASetupState;
+  message?: string;
+  error?: string;
+  requiresUserAction: boolean;
+  userActionInstructions?: string[];
+}
+
 interface AppStateSnapshot {
   devices: DeviceState[];
   activeDeviceId: string | null;
@@ -127,6 +151,7 @@ interface AppStateSnapshot {
   };
   statusMessage?: StatusMessage;
   deviceInfo: Record<string, DeviceDetailedInfo>;
+  wdaSetupStatus: Record<string, WDASetupStatus>;
 }
 
 /**
@@ -205,6 +230,9 @@ let currentScreenshotData: string | null = null;
 let deviceInfoTooltip: HTMLElement | null = null;
 const deviceInfoCache = new Map<string, DeviceDetailedInfo>();
 let tooltipHideTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Last received state snapshot (for accessing wdaSetupStatus)
+let lastStateSnapshot: AppStateSnapshot | null = null;
 
 /**
  * Initialize the WebView
@@ -384,14 +412,14 @@ function initialize() {
     });
   }
 
-  // WebDriverAgent connect button (iOS input)
+  // WebDriverAgent launch button (iOS input) - starts WDA setup process
   if (wdaOverlayBtn) {
     wdaOverlayBtn.addEventListener('click', () => {
-      if (!activeDeviceId) {
-        return;
+      // Check if setup is already in progress (button shows loading state)
+      if (wdaOverlayBtn.classList.contains('loading')) {
+        return; // Don't restart if already running
       }
-      wdaOverlayBtn.classList.add('loading');
-      vscode.postMessage({ type: 'startIOSInput', deviceId: activeDeviceId });
+      vscode.postMessage({ type: 'startWDASetup' });
     });
   }
 
@@ -527,20 +555,70 @@ function updateWdaOverlay(): void {
   const session = activeDeviceId ? sessions.get(activeDeviceId) : undefined;
   const isIos = session?.platform === 'ios';
   const info = session ? deviceInfoCache.get(session.deviceInfo.serial) : undefined;
-  const status = info?.wdaStatus;
-  const isConnecting = status === 'connecting';
+  const wdaStatus = info?.wdaStatus;
+
+  // Get WDA setup status from state snapshot
+  const setupStatus =
+    activeDeviceId && lastStateSnapshot?.wdaSetupStatus
+      ? lastStateSnapshot.wdaSetupStatus[activeDeviceId]
+      : undefined;
 
   // Show overlay only for iOS, when WDA is not connected/disabled
-  const shouldShowOverlay = isIos && status !== 'connected' && status !== 'disabled';
+  const shouldShowOverlay = isIos && wdaStatus !== 'connected' && wdaStatus !== 'disabled';
   wdaOverlay.classList.toggle('visible', shouldShowOverlay);
 
   if (!shouldShowOverlay) {
-    wdaOverlayBtn.classList.remove('loading');
     return;
   }
 
-  wdaOverlayBtn.classList.toggle('loading', isConnecting);
-  wdaOverlayBtn.textContent = window.l10n.startWdaOverlay;
+  // Update button based on setup status
+  if (setupStatus && setupStatus.state !== 'idle' && setupStatus.state !== 'cancelled') {
+    // Setup is in progress or needs attention
+    const isLoading =
+      !setupStatus.requiresUserAction &&
+      setupStatus.state !== 'error' &&
+      setupStatus.state !== 'ready';
+
+    // Update button classes
+    wdaOverlayBtn.classList.toggle('loading', isLoading);
+    wdaOverlayBtn.classList.toggle('action-required', setupStatus.requiresUserAction);
+    wdaOverlayBtn.classList.toggle('error', setupStatus.state === 'error');
+
+    // Update button text
+    wdaOverlayBtn.textContent = setupStatus.message || getSetupStateMessage(setupStatus.state);
+  } else {
+    // Default state - show launch button
+    wdaOverlayBtn.classList.remove('loading', 'action-required', 'error');
+    wdaOverlayBtn.textContent = window.l10n.startWdaOverlay;
+  }
+}
+
+/**
+ * Get human-readable message for WDA setup state
+ */
+function getSetupStateMessage(state: WDASetupState): string {
+  switch (state) {
+    case 'checking_xcode':
+      return 'Checking Xcode...';
+    case 'checking_iproxy':
+      return 'Checking iproxy...';
+    case 'checking_device':
+      return 'Checking device...';
+    case 'cloning_wda':
+      return 'Setting up WDA...';
+    case 'configuring':
+      return 'Configure in Xcode';
+    case 'building':
+      return 'Building WDA...';
+    case 'starting':
+      return 'Starting WDA...';
+    case 'ready':
+      return 'Input enabled!';
+    case 'error':
+      return 'Setup failed - Retry';
+    default:
+      return 'Setting up...';
+  }
 }
 
 /**
@@ -810,6 +888,9 @@ function updateAudioState(audioEnabled: boolean): void {
  * This replaces individual message handlers like sessionList, settings, toolStatus, connectionStateChanged
  */
 function handleStateSnapshot(state: AppStateSnapshot): void {
+  // Store the snapshot for use in updateWdaOverlay
+  lastStateSnapshot = state;
+
   // 1. Update tool status
   const wasAvailable = toolsAvailable;
   toolsAvailable = state.toolStatus.adbAvailable && state.toolStatus.scrcpyAvailable;

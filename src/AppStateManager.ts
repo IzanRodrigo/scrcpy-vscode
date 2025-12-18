@@ -15,6 +15,7 @@ import {
   WebviewSettings,
   StatusMessage,
   DeviceUISettings,
+  WDASetupStatus,
 } from './types/AppState';
 import { ActionType, AppAction } from './types/Actions';
 
@@ -70,6 +71,7 @@ export class AppStateManager {
       allowedAutoConnectDevices: new Set(allowedDevices),
       blockedAutoConnectDevices: new Set(blockedDevices),
       controlCenterCache,
+      wdaSetupStatus: new Map(),
     };
   }
 
@@ -250,6 +252,18 @@ export class AppStateManager {
         }
         return false;
       }
+      case ActionType.SET_WDA_SETUP_STATUS: {
+        const { deviceId, status } = action.payload;
+        if (status === null) {
+          if (this.state.wdaSetupStatus.delete(deviceId)) {
+            return true;
+          }
+          return false;
+        } else {
+          this.state.wdaSetupStatus.set(deviceId, { ...status });
+          return true;
+        }
+      }
     }
     return false;
   }
@@ -269,6 +283,7 @@ export class AppStateManager {
       allowedAutoConnectDevices: Array.from(this.state.allowedAutoConnectDevices),
       blockedAutoConnectDevices: Array.from(this.state.blockedAutoConnectDevices),
       controlCenterCache: { ...this.state.controlCenterCache },
+      wdaSetupStatus: Object.fromEntries(this.state.wdaSetupStatus),
     };
   }
 
@@ -426,6 +441,13 @@ export class AppStateManager {
    */
   getControlCenterCache(): Readonly<Record<string, DeviceUISettings>> {
     return this.state.controlCenterCache;
+  }
+
+  /**
+   * Get WDA setup status for a device
+   */
+  getWDASetupStatus(deviceId: string): Readonly<WDASetupStatus> | undefined {
+    return this.state.wdaSetupStatus.get(deviceId);
   }
 
   // ==================== Auto-Connect State (Actions) ====================
