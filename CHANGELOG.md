@@ -77,10 +77,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Detects CoreMediaIO permission errors (status 268435459) and launchctl kickstart failures (exit code 150)
   - Provides clear guidance on how to grant Screen Recording permission in System Settings
   - ios-preview CLI tool auto-opens System Settings to the Screen Recording panel when permission error detected
+  - Permission error notification shown only once per session to avoid spam
 - **iOS lifecycle management** - iOS helper is now preloaded at extension startup when iOS support is enabled
   - Helper is only loaded if `scrcpy.iosSupport` setting is enabled
   - When user enables iOS support via settings, helper is preloaded automatically
   - When user disables iOS support via settings, all iOS connections are stopped and resources cleaned up
+- **Fixed ios-helper binary being killed (SIGKILL/exit code 137)** - Copying the binary to dist invalidated code signature
+  - Webpack now re-signs the binary after copying with `codesign --force --sign -`
+  - Also clears extended attributes (`xattr -c`) that could cause TCC rejection
+- **Single ios-helper process enforcement** - Prevents multiple concurrent ios-helper processes
+  - TypeScript: Concurrent device list calls return the same promise instead of spawning new processes
+  - Swift: New list operation kills any previous list processes before running
 - **iOS device info in tooltip** - Device tooltip now shows real iOS device info (battery, iOS version, storage, model name) via `ideviceinfo` from libimobiledevice
   - Maps ProductType identifiers to human-readable model names (iPhone 16 Pro Max, iPad Air M2, etc.)
   - Resolves CoreMediaIO UID to real iOS UDID for libimobiledevice compatibility

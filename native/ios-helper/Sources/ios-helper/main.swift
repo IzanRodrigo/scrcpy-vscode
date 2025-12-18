@@ -324,6 +324,36 @@ func printUsage() {
     """, stderr)
 }
 
+/// Kill other ios-helper processes running the same command
+func killPreviousInstances(command: String) {
+    let currentPid = getpid()
+
+    // Use pgrep to find other ios-helper processes, excluding current PID
+    let pgrep = Process()
+    pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+    pgrep.arguments = ["-f", "ios-helper \(command)"]
+
+    let pipe = Pipe()
+    pgrep.standardOutput = pipe
+    pgrep.standardError = FileHandle.nullDevice
+
+    do {
+        try pgrep.run()
+        pgrep.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+            for pidStr in output.split(separator: "\n") {
+                if let pid = Int32(pidStr), pid != currentPid {
+                    kill(pid, SIGTERM)
+                }
+            }
+        }
+    } catch {
+        // Ignore errors - best effort
+    }
+}
+
 func main() {
     let args = CommandLine.arguments
 
@@ -337,6 +367,9 @@ func main() {
 
     switch command {
     case "list":
+        // Kill any previous list operations to avoid multiple concurrent processes
+        killPreviousInstances(command: "list")
+
         var videoSource = "display"
         var i = 2
         while i < args.count {

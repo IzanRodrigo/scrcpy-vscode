@@ -4,6 +4,7 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 // Check if ios-helper binary exists (only on macOS)
 const iosHelperPath = path.resolve(__dirname, 'native/ios-helper/.build/release/ios-helper');
@@ -30,6 +31,16 @@ class EnsureExecutablePlugin {
         const targetPath = path.resolve(outputPath, this.relativePath);
         if (fs.existsSync(targetPath)) {
           fs.chmodSync(targetPath, 0o755);
+          // On macOS, re-sign the binary after copying to fix code signature
+          // and clear extended attributes that may cause the binary to be killed
+          if (process.platform === 'darwin') {
+            try {
+              execFileSync('xattr', ['-c', targetPath]);
+              execFileSync('codesign', ['--force', '--sign', '-', targetPath]);
+            } catch {
+              // Best-effort: signing may fail if codesign is not available
+            }
+          }
         }
       } catch {
         // Best-effort: permissions may be read-only in some environments.

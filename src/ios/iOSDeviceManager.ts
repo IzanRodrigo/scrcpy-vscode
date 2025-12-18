@@ -34,6 +34,9 @@ export class iOSDeviceManager {
   // Track if we've already shown the permission error notification this session
   private static permissionErrorShown = false;
 
+  // Prevent concurrent ios-helper processes
+  private static pendingListOperation: Promise<DeviceInfo[]> | null = null;
+
   /**
    * Reset the permission error shown flag (call when user explicitly retries)
    */
@@ -43,9 +46,30 @@ export class iOSDeviceManager {
 
   /**
    * Get list of connected iOS devices
+   * Only one list operation runs at a time - concurrent calls return the same promise
    */
   static async getAvailableDevices(
     videoSource: 'display' | 'camera' = 'display'
+  ): Promise<DeviceInfo[]> {
+    // If a list operation is already in progress, return its promise
+    if (this.pendingListOperation) {
+      console.log('[iOSDeviceManager] List operation already in progress, waiting...');
+      return this.pendingListOperation;
+    }
+
+    // Start new operation and track it
+    this.pendingListOperation = this.listDevicesInternal(videoSource).finally(() => {
+      this.pendingListOperation = null;
+    });
+
+    return this.pendingListOperation;
+  }
+
+  /**
+   * Internal method that actually lists devices
+   */
+  private static async listDevicesInternal(
+    videoSource: 'display' | 'camera'
   ): Promise<DeviceInfo[]> {
     if (!isIOSSupportAvailable()) {
       console.log('[iOSDeviceManager] iOS support not available');
@@ -152,11 +176,11 @@ export class iOSDeviceManager {
         resolve([]);
       });
 
-      // Timeout after 10 seconds
+      // Timeout after 15 seconds
       setTimeout(() => {
         proc.kill();
         resolve([]);
-      }, 10000);
+      }, 15000);
     });
   }
 
