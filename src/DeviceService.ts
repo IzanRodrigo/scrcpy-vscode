@@ -20,6 +20,7 @@ import {
   DarkMode,
   NavigationMode,
 } from './types/AppState';
+import { ActionType } from './types/Actions';
 
 // Re-export types for backward compatibility
 export type { DeviceInfo, DeviceDetailedInfo, ConnectionState };
@@ -268,7 +269,7 @@ export class DeviceService {
       };
 
       // Update AppState with device info
-      this.appState.setDeviceInfo(serial, info);
+      this.appState.dispatch({ type: ActionType.SET_DEVICE_INFO, payload: { serial, info } });
 
       return info;
     } catch {
@@ -534,17 +535,30 @@ export class DeviceService {
     }
 
     // Add device to AppState
-    this.appState.addDevice({
-      deviceId,
-      serial: deviceInfo.serial,
-      name: deviceInfo.name,
-      model: deviceInfo.model,
-      connectionState: 'connecting',
-      isActive: true,
+    this.appState.dispatch({
+      type: ActionType.ADD_DEVICE,
+      payload: {
+        deviceId,
+        serial: deviceInfo.serial,
+        name: deviceInfo.name,
+        model: deviceInfo.model,
+        connectionState: 'connecting',
+        isActive: true,
+      },
     });
 
     // Set as active device
-    this.appState.setActiveDevice(deviceId);
+    this.appState.dispatch({ type: ActionType.SET_ACTIVE_DEVICE, payload: { deviceId } });
+
+    // Add to allowed list for auto-connect (persistently)
+    this.appState.dispatch({
+      type: ActionType.ADD_ALLOWED_AUTO_CONNECT,
+      payload: { serial: deviceInfo.serial },
+    });
+    this.appState.dispatch({
+      type: ActionType.REMOVE_BLOCKED_AUTO_CONNECT,
+      payload: { serial: deviceInfo.serial },
+    });
 
     try {
       await this.connectSession(session);
@@ -552,7 +566,7 @@ export class DeviceService {
       // Error already reported via callback
       // Remove failed session
       this.sessions.delete(deviceId);
-      this.appState.removeDevice(deviceId);
+      this.appState.dispatch({ type: ActionType.REMOVE_DEVICE, payload: { deviceId } });
 
       // Switch to first available session
       const deviceIds = this.appState.getDeviceIds();
@@ -570,7 +584,10 @@ export class DeviceService {
    */
   private async connectSession(session: DeviceSession): Promise<void> {
     // Update state to connecting
-    this.appState.updateDeviceConnectionState(session.deviceId, 'connecting');
+    this.appState.dispatch({
+      type: ActionType.UPDATE_DEVICE,
+      payload: { deviceId: session.deviceId, updates: { connectionState: 'connecting' } },
+    });
 
     await this.connectWithCodecFallback(session);
   }
@@ -591,12 +608,16 @@ export class DeviceService {
           session.lastWidth = width;
           session.lastHeight = height;
           // Update AppState with dimensions
-          this.appState.updateDeviceVideoDimensions(
-            session.deviceId,
-            width,
-            height,
-            codec as VideoCodec | undefined
-          );
+          this.appState.dispatch({
+            type: ActionType.UPDATE_DEVICE,
+            payload: {
+              deviceId: session.deviceId,
+              updates: {
+                videoDimensions: { width, height },
+                ...(codec ? { videoCodec: codec as VideoCodec } : {}),
+              },
+            },
+          });
         }
         if (codec) {
           session.lastCodec = codec;
@@ -641,10 +662,13 @@ export class DeviceService {
       session.retryCount = 0;
 
       // Update state to connected
-      this.appState.updateDeviceConnectionState(session.deviceId, 'connected');
+      this.appState.dispatch({
+        type: ActionType.UPDATE_DEVICE,
+        payload: { deviceId: session.deviceId, updates: { connectionState: 'connected' } },
+      });
 
       // Clear any loading status message now that we're connected
-      this.appState.clearStatusMessage();
+      this.appState.dispatch({ type: ActionType.SET_STATUS_MESSAGE, payload: undefined });
 
       // Notify if we fell back to a different codec
       if (session.effectiveCodec !== this.config.videoCodec) {
@@ -685,7 +709,10 @@ export class DeviceService {
       }
 
       // No more fallbacks available
-      this.appState.updateDeviceConnectionState(session.deviceId, 'disconnected');
+      this.appState.dispatch({
+        type: ActionType.UPDATE_DEVICE,
+        payload: { deviceId: session.deviceId, updates: { connectionState: 'disconnected' } },
+      });
       this.errorCallback(session.deviceId, message, error instanceof Error ? error : undefined);
       throw error;
     }
@@ -696,7 +723,17 @@ export class DeviceService {
    */
   private async handleDisconnect(session: DeviceSession, error: string): Promise<void> {
     // Don't reconnect if disposed or already reconnecting
-    if (session.isDisposed || session.isReconnecting) {
+    if (
+      session.isDisposed ||
+      session.isReconnecting ||
+      this.appState.isBlockedAutoConnectDevice(session.deviceInfo.serial)
+    ) {
+      this.appState.dispatch({
+        type: ActionType.UPDATE_DEVICE,
+        payload: { deviceId: session.deviceId, updates: { connectionState: 'disconnected' } },
+      });
+      this.errorCallback(session.deviceId, error);
+      this.handleSessionFailed(session.deviceId);
       return;
     }
 
@@ -707,7 +744,10 @@ export class DeviceService {
       session.isReconnecting = true;
       session.retryCount++;
 
-      this.appState.updateDeviceConnectionState(session.deviceId, 'reconnecting');
+      this.appState.dispatch({
+        type: ActionType.UPDATE_DEVICE,
+        payload: { deviceId: session.deviceId, updates: { connectionState: 'reconnecting' } },
+      });
 
       this.statusCallback(
         session.deviceId,
@@ -739,7 +779,10 @@ export class DeviceService {
     }
 
     // All retries exhausted
-    this.appState.updateDeviceConnectionState(session.deviceId, 'disconnected');
+    this.appState.dispatch({
+      type: ActionType.UPDATE_DEVICE,
+      payload: { deviceId: session.deviceId, updates: { connectionState: 'disconnected' } },
+    });
     this.errorCallback(session.deviceId, error);
     this.handleSessionFailed(session.deviceId);
   }
@@ -765,7 +808,7 @@ export class DeviceService {
 
     // Activate new session
     newSession.isPaused = false;
-    this.appState.setActiveDevice(deviceId);
+    this.appState.dispatch({ type: ActionType.SET_ACTIVE_DEVICE, payload: { deviceId } });
 
     // Resume - send cached frames
     this.resumeSession(newSession);
@@ -827,6 +870,14 @@ export class DeviceService {
     // Mark as manually closed to prevent auto-reconnect
     const deviceSerial = session.deviceInfo.serial;
     this.knownDeviceSerials.add(deviceSerial);
+    this.appState.dispatch({
+      type: ActionType.REMOVE_ALLOWED_AUTO_CONNECT,
+      payload: { serial: deviceSerial },
+    });
+    this.appState.dispatch({
+      type: ActionType.ADD_BLOCKED_AUTO_CONNECT,
+      payload: { serial: deviceSerial },
+    });
 
     session.isDisposed = true;
     if (session.connection) {
@@ -836,18 +887,21 @@ export class DeviceService {
     this.sessions.delete(deviceId);
 
     // Remove from AppState
-    this.appState.removeDevice(deviceId);
+    this.appState.dispatch({ type: ActionType.REMOVE_DEVICE, payload: { deviceId } });
 
     // Check remaining devices
     const deviceIds = this.appState.getDeviceIds();
 
     if (deviceIds.length === 0) {
       // No devices left - clear any error/loading messages and show empty state
-      this.appState.setStatusMessage({
-        type: 'empty',
-        text: vscode.l10n.t(
-          'No Android devices found.\n\nPlease connect a device and enable USB debugging.'
-        ),
+      this.appState.dispatch({
+        type: ActionType.SET_STATUS_MESSAGE,
+        payload: {
+          type: 'empty',
+          text: vscode.l10n.t(
+            'No Android devices found.\n\nPlease connect a device and enable USB debugging.'
+          ),
+        },
       });
     } else if (this.appState.getActiveDeviceId() === null) {
       // If removed active device, switch to first available
@@ -1304,7 +1358,7 @@ export class DeviceService {
     this.stopDeviceInfoRefresh();
 
     // Clear all devices from AppState
-    this.appState.clearAllDevices();
+    this.appState.dispatch({ type: ActionType.CLEAR_ALL_DEVICES });
   }
 
   /**
@@ -1327,7 +1381,7 @@ export class DeviceService {
 
     // Remove the failed session
     this.sessions.delete(deviceId);
-    this.appState.removeDevice(deviceId);
+    this.appState.dispatch({ type: ActionType.REMOVE_DEVICE, payload: { deviceId } });
 
     // Remove from known devices so auto-connect can pick it up again
     this.knownDeviceSerials.delete(deviceSerial);
@@ -1348,7 +1402,10 @@ export class DeviceService {
     if (this.appState.isMonitoring()) {
       return;
     }
-    this.appState.setMonitoring(true);
+    this.appState.dispatch({
+      type: ActionType.SET_MONITORING,
+      payload: { isMonitoring: true },
+    });
 
     // Initialize known devices with currently connected sessions
     this.knownDeviceSerials.clear();
@@ -1479,6 +1536,9 @@ export class DeviceService {
       if (this.isWifiDevice(device.serial)) {
         continue;
       }
+      if (this.appState.isBlockedAutoConnectDevice(device.serial)) {
+        continue;
+      }
 
       if (!this.knownDeviceSerials.has(device.serial) && !this.isDeviceConnected(device.serial)) {
         // Get device model name
@@ -1497,16 +1557,21 @@ export class DeviceService {
           // Keep serial as name
         }
 
-        this.statusCallback('', vscode.l10n.t('Connecting to {0}...', device.name));
+        // Always mark as seen to avoid repeated checks for the same plug event
+        this.knownDeviceSerials.add(device.serial);
 
-        try {
-          if (!this.appState.isMonitoring()) {
-            return;
+        // Only auto-connect if allowed (user has connected once before)
+        if (this.appState.isAllowedAutoConnectDevice(device.serial)) {
+          this.statusCallback('', vscode.l10n.t('Connecting to {0}...', device.name));
+
+          try {
+            if (!this.appState.isMonitoring()) {
+              return;
+            }
+            await this.addDevice(device);
+          } catch {
+            // Failed to connect
           }
-          await this.addDevice(device);
-          this.knownDeviceSerials.add(device.serial);
-        } catch {
-          // Failed to connect
         }
       }
     }
@@ -1523,7 +1588,10 @@ export class DeviceService {
    * Stop monitoring for new devices
    */
   stopDeviceMonitoring(): void {
-    this.appState.setMonitoring(false);
+    this.appState.dispatch({
+      type: ActionType.SET_MONITORING,
+      payload: { isMonitoring: false },
+    });
     if (this.trackDevicesRestartTimeout) {
       clearTimeout(this.trackDevicesRestartTimeout);
       this.trackDevicesRestartTimeout = null;

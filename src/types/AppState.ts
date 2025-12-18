@@ -146,6 +146,9 @@ export interface AppState {
   statusMessage?: StatusMessage;
   deviceInfo: Map<string, DeviceDetailedInfo>;
   isMonitoring: boolean;
+  allowedAutoConnectDevices: Set<string>;
+  blockedAutoConnectDevices: Set<string>;
+  controlCenterCache: Record<string, DeviceUISettings>;
 }
 
 /**
@@ -159,4 +162,14 @@ export interface AppStateSnapshot {
   toolStatus: ToolStatus;
   statusMessage?: StatusMessage;
   deviceInfo: Record<string, DeviceDetailedInfo>;
+  // We don't necessarily need to send this to the webview, but keeping it in snapshot for consistency
+  // allowedAutoConnectDevices is internal logic, but maybe useful for debug?
+  // Let's exclude it from snapshot sent to webview for now if not needed by UI,
+  // or include it if we want to visualize it.
+  // The prompt says "The whole app state must be handled using AppStateManager".
+  // Snapshot is what is sent to webview.
+  // I'll add it to the snapshot but as an array.
+  allowedAutoConnectDevices: string[];
+  blockedAutoConnectDevices: string[];
+  controlCenterCache: Record<string, DeviceUISettings>;
 }

@@ -123,12 +123,13 @@ Go to Actions → Deploy → Run workflow
 src/
 ├── extension.ts          # Entry point, registers provider and commands
 ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar view
-├── AppStateManager.ts    # Centralized state management (single source of truth)
+├── AppStateManager.ts    # Centralized state management (dispatch/reducer pattern)
 ├── DeviceService.ts      # Multi-device session management
 ├── ScrcpyConnection.ts   # ADB communication, scrcpy protocol
 ├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
 ├── types/
 │   ├── AppState.ts       # State interfaces (DeviceState, AppStateSnapshot, etc.)
+│   ├── Actions.ts        # Typed actions for state mutations (Redux-like)
 │   └── WebviewActions.ts # Typed actions from webview to extension
 └── webview/
     ├── main.ts           # WebView entry, message handling, tab management
@@ -156,13 +157,20 @@ src/
 
 - **AppStateManager.ts**: Centralized state management
   - Single source of truth for all application state
+  - Uses Redux-like action/dispatch pattern with typed actions
+  - `dispatch(action)` method for all state mutations
+  - Internal `reducer()` handles state transitions
   - Manages devices, activeDeviceId, settings, toolStatus, statusMessage, deviceInfo
+  - Manages auto-connect persistence: allowedAutoConnectDevices, blockedAutoConnectDevices
+  - Manages Control Center cache for per-device UI settings
   - Emits state snapshots on any change via subscription
   - Uses microtask scheduling to batch multiple mutations
+  - Accepts optional `vscode.Memento` storage for persistence
 
 - **DeviceService.ts**: Multi-device session management
   - Manages multiple `ScrcpyConnection` instances (one per device)
   - Delegates state ownership to `AppStateManager`
+  - Uses `appState.dispatch()` for all state mutations
   - `getAvailableDevices()`: Lists connected ADB devices with model names (excludes mDNS duplicates)
   - `addDevice()`: Connects to a specific device by serial, auto-switches to new device tab
   - `removeDevice()`: Disconnects and removes a device session
@@ -172,8 +180,9 @@ src/
   - `disconnectWifi()`: Disconnects a WiFi device using `adb disconnect`
   - Prevents duplicate device connections
   - Device monitoring: Uses `adb track-devices` for efficient push-based detection (no polling)
-  - Auto-connect: New USB devices are connected automatically (WiFi excluded from auto-connect, but included in startup)
-  - Auto-reconnect: Configurable retries (1-5) with 1.5s delay on unexpected disconnect (works for both USB and WiFi)
+  - Auto-connect: New USB devices are connected automatically if in allowed list (WiFi excluded from auto-connect, but included in startup)
+  - Auto-connect persistence: Connecting adds device to allowed list; manual disconnect adds to blocked list
+  - Auto-reconnect: Configurable retries (1-5) with 1.5s delay on unexpected disconnect (blocked devices skip reconnect)
   - `takeScreenshot()`: Delegates to active session's connection for screenshot capture
   - `installApk()`: Installs APK on active device via `adb install`
   - `pushFiles()`: Uploads files/folders to active device in a single `adb push` command
@@ -335,9 +344,11 @@ npm run test:ui
 test/
 ├── unit/
 │   ├── AppStateManager.test.ts          # Centralized state management tests (100% coverage)
+│   ├── AppStateManager.Persistence.test.ts # Storage persistence for auto-connect lists
 │   ├── CodecUtils.test.ts               # Video codec detection and configuration tests
 │   ├── ScrcpyProtocol.test.ts           # Protocol constants tests
 │   ├── ScrcpyConnection.Protocol.test.ts # Protocol parsing tests (video/audio/device messages)
+│   ├── DeviceService.AutoConnect.test.ts # Auto-connect allowed/blocked list logic tests
 │   └── webview/
 │       ├── InputHandler.test.ts         # Pointer/scroll event tests
 │       ├── KeyboardHandler.test.ts      # Keyboard input tests
