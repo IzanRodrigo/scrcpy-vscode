@@ -334,27 +334,30 @@ npm run test:ui
 ```
 test/
 ├── unit/
-│   ├── AppStateManager.test.ts # Centralized state management tests (100% coverage)
-│   ├── CodecUtils.test.ts      # Video codec detection and configuration tests
-│   ├── ScrcpyProtocol.test.ts  # Protocol constants tests
+│   ├── AppStateManager.test.ts          # Centralized state management tests (100% coverage)
+│   ├── CodecUtils.test.ts               # Video codec detection and configuration tests
+│   ├── ScrcpyProtocol.test.ts           # Protocol constants tests
+│   ├── ScrcpyConnection.Protocol.test.ts # Protocol parsing tests (video/audio/device messages)
 │   └── webview/
-│       ├── InputHandler.test.ts      # Pointer/scroll event tests
-│       ├── KeyboardHandler.test.ts   # Keyboard input tests
-│       ├── RecordingManager.test.ts  # Screen recording tests
-│       └── VideoRenderer.test.ts     # Video decoding and resize tests
+│       ├── InputHandler.test.ts         # Pointer/scroll event tests
+│       ├── KeyboardHandler.test.ts      # Keyboard input tests
+│       ├── RecordingManager.test.ts     # Screen recording tests
+│       └── VideoRenderer.test.ts        # Video decoding and resize tests
 ├── integration/
-│   ├── DeviceService.test.ts   # Device discovery & WiFi tests
-│   └── ScrcpyConnection.test.ts # Connection & control tests
+│   ├── DeviceService.test.ts            # Device discovery, WiFi, session management tests
+│   └── ScrcpyConnection.test.ts         # Connection, control, socket setup tests
+├── helpers/
+│   └── protocol.ts                      # Protocol test helpers (MockScrcpyVideoStream, etc.)
 ├── mocks/
-│   ├── vscode.ts       # VS Code API mock
-│   ├── child_process.ts # spawn/exec mock
-│   └── net.ts          # Socket/Server mock
+│   ├── vscode.ts                        # VS Code API mock
+│   ├── child_process.ts                 # spawn/exec mock
+│   └── net.ts                           # Socket/Server mock
 ├── fixtures/
-│   └── h264-samples.ts # H.264 NAL unit samples
-└── setup.ts            # Global test setup
+│   └── h264-samples.ts                  # H.264 samples + protocol message builders
+└── setup.ts                             # Global test setup
 ```
 
-**Coverage:** Tests cover the extension host and webview components with full coverage for state management.
+**Coverage thresholds:** 60% lines, 60% functions, 50% branches, 60% statements. Tests cover protocol parsing, socket connections, device management, and webview components.
 
 **CI Integration:** Tests run automatically on every push/PR via GitHub Actions with coverage reporting to Codecov.
 

@@ -63,6 +63,36 @@ export interface DeviceDetailedInfo {
 }
 
 /**
+ * Dark mode setting values
+ */
+export type DarkMode = 'auto' | 'light' | 'dark';
+
+/**
+ * Navigation mode setting values
+ */
+export type NavigationMode = 'gestural' | 'threebutton' | 'twobutton';
+
+/**
+ * Device UI settings that can be modified via ADB
+ */
+/**
+ * Screen orientation mode
+ */
+export type Orientation = 'auto' | 'portrait' | 'landscape';
+
+export interface DeviceUISettings {
+  darkMode: DarkMode;
+  navigationMode: NavigationMode;
+  availableNavigationModes: NavigationMode[];
+  talkbackEnabled: boolean;
+  fontScale: number;
+  displayDensity: number;
+  defaultDensity: number;
+  showLayoutBounds: boolean;
+  orientation: Orientation;
+}
+
+/**
  * State for a single device/session
  */
 export interface DeviceState {

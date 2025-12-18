@@ -6,10 +6,11 @@ import { ScrcpyConfig } from './ScrcpyConnection';
 import { DeviceService } from './DeviceService';
 import { AppStateManager, Unsubscribe } from './AppStateManager';
 import { ToolCheckResult } from './ToolChecker';
-import { ToolNotFoundError, ToolErrorCode } from './types/AppState';
+import { ToolNotFoundError, ToolErrorCode, DeviceUISettings } from './types/AppState';
 
 export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'scrcpy.deviceView';
+  private static readonly CONTROL_CENTER_CACHE_KEY = 'controlCenterCache';
 
   private _view?: vscode.WebviewView;
   private _appState?: AppStateManager;
@@ -19,12 +20,15 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   private _isDisposed = false;
   private _abortController?: AbortController;
   private _toolStatus?: ToolCheckResult;
+  private _globalState?: vscode.Memento;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    toolStatus?: ToolCheckResult
+    toolStatus?: ToolCheckResult,
+    globalState?: vscode.Memento
   ) {
     this._toolStatus = toolStatus;
+    this._globalState = globalState;
   }
 
   public resolveWebviewView(
@@ -421,6 +425,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     data?: number[];
     mimeType?: string;
     duration?: number;
+    setting?: string;
+    value?: unknown;
   }) {
     switch (message.type) {
       case 'touch':
@@ -609,6 +615,11 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       case 'ready':
         console.log('Webview ready');
         this._sendSettings();
+        // Send cached device settings to webview
+        this._view?.webview.postMessage({
+          type: 'controlCenterCacheLoaded',
+          cache: this.getControlCenterCache(),
+        });
         break;
 
       case 'reconnect':
@@ -662,6 +673,63 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
               type: 'deviceInfo',
               serial: message.serial,
               info: null,
+            });
+          }
+        }
+        break;
+
+      case 'openControlCenter':
+        if (this._deviceService) {
+          const deviceId = this._appState?.getActiveDeviceId();
+          try {
+            const settings = await this._deviceService.getDeviceUISettings();
+            // Save to persistent cache
+            if (deviceId) {
+              this.saveControlCenterToCache(deviceId, settings);
+            }
+            this._view?.webview.postMessage({
+              type: 'controlCenterLoaded',
+              settings,
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(
+              vscode.l10n.t('Failed to load device settings: {0}', errorMessage)
+            );
+          }
+        }
+        break;
+
+      case 'applyControlCenterSetting':
+        if (this._deviceService && message.setting && message.value !== undefined) {
+          const deviceId = this._appState?.getActiveDeviceId();
+          try {
+            await this._deviceService.applyDeviceUISetting(
+              message.setting as keyof DeviceUISettings,
+              message.value as DeviceUISettings[keyof DeviceUISettings]
+            );
+            // Update persistent cache
+            if (deviceId) {
+              this.updateDeviceSettingInCache(
+                deviceId,
+                message.setting as keyof DeviceUISettings,
+                message.value as DeviceUISettings[keyof DeviceUISettings]
+              );
+            }
+            // Notify webview of success
+            this._view?.webview.postMessage({
+              type: 'deviceSettingApplied',
+              setting: message.setting,
+              success: true,
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            // Notify webview of failure
+            this._view?.webview.postMessage({
+              type: 'deviceSettingApplied',
+              setting: message.setting,
+              success: false,
+              error: errorMessage,
             });
           }
         }
@@ -1472,5 +1540,55 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
     return getHtmlForWebview(webview, this._extensionUri);
+  }
+
+  /**
+   * Get device settings cache from globalState
+   */
+  private getControlCenterCache(): Record<string, DeviceUISettings> {
+    if (!this._globalState) {
+      return {};
+    }
+    return this._globalState.get<Record<string, DeviceUISettings>>(
+      ScrcpyViewProvider.CONTROL_CENTER_CACHE_KEY,
+      {}
+    );
+  }
+
+  /**
+   * Save device settings to persistent cache
+   */
+  private saveControlCenterToCache(deviceId: string, settings: DeviceUISettings): void {
+    if (!this._globalState) {
+      return;
+    }
+    const cache = this.getControlCenterCache();
+    cache[deviceId] = settings;
+    this._globalState.update(ScrcpyViewProvider.CONTROL_CENTER_CACHE_KEY, cache);
+  }
+
+  /**
+   * Update a single setting in the persistent cache
+   */
+  private updateDeviceSettingInCache(
+    deviceId: string,
+    setting: keyof DeviceUISettings,
+    value: DeviceUISettings[keyof DeviceUISettings]
+  ): void {
+    if (!this._globalState) {
+      return;
+    }
+    const cache = this.getControlCenterCache();
+    if (cache[deviceId]) {
+      (cache[deviceId] as unknown as Record<string, unknown>)[setting] = value;
+      this._globalState.update(ScrcpyViewProvider.CONTROL_CENTER_CACHE_KEY, cache);
+    }
+  }
+
+  /**
+   * Get cached settings for a device
+   */
+  public getControlCenterFromCache(deviceId: string): DeviceUISettings | undefined {
+    return this.getControlCenterCache()[deviceId];
   }
 }

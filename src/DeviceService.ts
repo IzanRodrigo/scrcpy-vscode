@@ -11,7 +11,15 @@ import * as path from 'path';
 import { ScrcpyConnection, ScrcpyConfig, ClipboardAPI, VideoCodecType } from './ScrcpyConnection';
 import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
 import { AppStateManager } from './AppStateManager';
-import { DeviceInfo, DeviceDetailedInfo, ConnectionState, VideoCodec } from './types/AppState';
+import {
+  DeviceInfo,
+  DeviceDetailedInfo,
+  ConnectionState,
+  VideoCodec,
+  DeviceUISettings,
+  DarkMode,
+  NavigationMode,
+} from './types/AppState';
 
 // Re-export types for backward compatibility
 export type { DeviceInfo, DeviceDetailedInfo, ConnectionState };
@@ -415,7 +423,7 @@ export class DeviceService {
     const adbCmd = this.getAdbCommand();
 
     return new Promise((resolve, reject) => {
-      execFile(adbCmd, ['connect', address], (error, stdout, stderr) => {
+      execFile(adbCmd, ['connect', address], { timeout: 15000 }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(stderr || error.message));
           return;
@@ -1011,6 +1019,270 @@ export class DeviceService {
       throw new Error(vscode.l10n.t('No active device'));
     }
     return session.connection.listDisplays();
+  }
+
+  // ==================== Device UI Settings ====================
+
+  /**
+   * TalkBack service identifier
+   */
+  private static readonly TALKBACK_SERVICE =
+    'com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService';
+
+  /**
+   * Get current device UI settings via ADB
+   */
+  async getDeviceUISettings(): Promise<DeviceUISettings> {
+    const session = this.getActiveSession();
+    if (!session?.connection) {
+      throw new Error(vscode.l10n.t('No active device'));
+    }
+
+    const serial = session.deviceInfo.serial;
+    const adbCmd = this.getAdbCommand();
+
+    const execAdb = (args: string[]): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        execFile(adbCmd, ['-s', serial, ...args], { timeout: 5000 }, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+          } else {
+            resolve(stdout.trim());
+          }
+        });
+      });
+    };
+
+    // Fetch all settings in parallel
+    const [
+      nightModeResult,
+      overlayResult,
+      accessibilityResult,
+      fontScaleResult,
+      densityResult,
+      layoutBoundsResult,
+      autoRotateResult,
+      userRotationResult,
+    ] = await Promise.all([
+      execAdb(['shell', 'cmd', 'uimode', 'night']).catch(() => ''),
+      execAdb(['shell', 'cmd', 'overlay', 'list']).catch(() => ''),
+      execAdb(['shell', 'settings', 'get', 'secure', 'enabled_accessibility_services']).catch(
+        () => ''
+      ),
+      execAdb(['shell', 'settings', 'get', 'system', 'font_scale']).catch(() => '1.0'),
+      execAdb(['shell', 'wm', 'density']).catch(() => ''),
+      execAdb(['shell', 'getprop', 'debug.layout']).catch(() => ''),
+      execAdb(['shell', 'settings', 'get', 'system', 'accelerometer_rotation']).catch(() => '1'),
+      execAdb(['shell', 'settings', 'get', 'system', 'user_rotation']).catch(() => '0'),
+    ]);
+
+    // Parse dark mode from "cmd uimode night" output (e.g., "Night mode: yes")
+    let darkMode: DarkMode = 'auto';
+    const nightModeLower = nightModeResult.toLowerCase();
+    if (nightModeLower.includes('yes')) {
+      darkMode = 'dark';
+    } else if (nightModeLower.includes('no')) {
+      darkMode = 'light';
+    }
+
+    // Parse available navigation modes from overlay list
+    const availableNavigationModes: NavigationMode[] = ['threebutton']; // Always available as default
+    if (overlayResult.includes('com.android.internal.systemui.navbar.gestural')) {
+      availableNavigationModes.push('gestural');
+    }
+    if (overlayResult.includes('com.android.internal.systemui.navbar.twobutton')) {
+      availableNavigationModes.push('twobutton');
+    }
+
+    // Parse current navigation mode from overlay list
+    let navigationMode: NavigationMode = 'threebutton';
+    if (overlayResult.includes('[x] com.android.internal.systemui.navbar.gestural')) {
+      navigationMode = 'gestural';
+    } else if (overlayResult.includes('[x] com.android.internal.systemui.navbar.twobutton')) {
+      navigationMode = 'twobutton';
+    }
+
+    // Parse accessibility services
+    const accessibilityServices = accessibilityResult.toLowerCase();
+    const talkbackEnabled = accessibilityServices.includes('talkback');
+
+    // Parse font scale
+    const fontScale = parseFloat(fontScaleResult) || 1.0;
+
+    // Parse display density
+    let displayDensity = 0;
+    let defaultDensity = 0;
+    const densityMatch = densityResult.match(/Physical density:\s*(\d+)/);
+    const overrideMatch = densityResult.match(/Override density:\s*(\d+)/);
+    if (densityMatch) {
+      defaultDensity = parseInt(densityMatch[1], 10);
+      displayDensity = overrideMatch ? parseInt(overrideMatch[1], 10) : defaultDensity;
+    }
+
+    // Parse layout bounds
+    const showLayoutBounds = layoutBoundsResult === 'true';
+
+    // Parse orientation
+    // accelerometer_rotation: 1 = auto-rotate enabled, 0 = disabled
+    // user_rotation: 0 = portrait, 1 = landscape, 2 = reverse portrait, 3 = reverse landscape
+    type Orientation = 'auto' | 'portrait' | 'landscape';
+    let orientation: Orientation = 'auto';
+    const autoRotate = autoRotateResult.trim() === '1';
+    if (autoRotate) {
+      orientation = 'auto';
+    } else {
+      const userRotation = parseInt(userRotationResult.trim(), 10) || 0;
+      // 0 or 2 = portrait variants, 1 or 3 = landscape variants
+      orientation = userRotation === 1 || userRotation === 3 ? 'landscape' : 'portrait';
+    }
+
+    return {
+      darkMode,
+      navigationMode,
+      availableNavigationModes,
+      talkbackEnabled,
+      fontScale,
+      displayDensity,
+      defaultDensity,
+      showLayoutBounds,
+      orientation,
+    };
+  }
+
+  /**
+   * Apply a single device UI setting via ADB
+   */
+  async applyDeviceUISetting<K extends keyof DeviceUISettings>(
+    setting: K,
+    value: DeviceUISettings[K]
+  ): Promise<void> {
+    const session = this.getActiveSession();
+    if (!session?.connection) {
+      throw new Error(vscode.l10n.t('No active device'));
+    }
+
+    const serial = session.deviceInfo.serial;
+    const adbCmd = this.getAdbCommand();
+
+    const execAdb = (args: string[]): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        execFile(adbCmd, ['-s', serial, ...args], { timeout: 10000 }, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+          } else {
+            resolve(stdout.trim());
+          }
+        });
+      });
+    };
+
+    switch (setting) {
+      case 'darkMode': {
+        // Use cmd uimode for reliable dark mode switching
+        const modeArg = value === 'light' ? 'no' : value === 'dark' ? 'yes' : 'auto';
+        await execAdb(['shell', 'cmd', 'uimode', 'night', modeArg]);
+        break;
+      }
+
+      case 'navigationMode': {
+        // Disable all navigation overlays first
+        const overlays = [
+          'com.android.internal.systemui.navbar.gestural',
+          'com.android.internal.systemui.navbar.twobutton',
+        ];
+        for (const overlay of overlays) {
+          await execAdb(['shell', 'cmd', 'overlay', 'disable', '--user', 'current', overlay]).catch(
+            () => {}
+          );
+        }
+        // Three-button is the default (no overlay needed)
+        // Only enable overlay for gestural or twobutton
+        if (value === 'gestural') {
+          await execAdb([
+            'shell',
+            'cmd',
+            'overlay',
+            'enable',
+            '--user',
+            'current',
+            'com.android.internal.systemui.navbar.gestural',
+          ]);
+        } else if (value === 'twobutton') {
+          await execAdb([
+            'shell',
+            'cmd',
+            'overlay',
+            'enable',
+            '--user',
+            'current',
+            'com.android.internal.systemui.navbar.twobutton',
+          ]);
+        }
+        break;
+      }
+
+      case 'talkbackEnabled': {
+        const currentServices = await execAdb([
+          'shell',
+          'settings',
+          'get',
+          'secure',
+          'enabled_accessibility_services',
+        ]).catch(() => '');
+        const services = currentServices
+          .split(':')
+          .filter((s) => s && !s.toLowerCase().includes('talkback'));
+        if (value) {
+          services.push(DeviceService.TALKBACK_SERVICE);
+        }
+        const newServices = services.join(':') || 'null';
+        await execAdb([
+          'shell',
+          'settings',
+          'put',
+          'secure',
+          'enabled_accessibility_services',
+          newServices,
+        ]);
+        break;
+      }
+
+      case 'fontScale': {
+        const scaleValue = String(value);
+        await execAdb(['shell', 'settings', 'put', 'system', 'font_scale', scaleValue]);
+        break;
+      }
+
+      case 'displayDensity': {
+        const densityValue = String(value);
+        await execAdb(['shell', 'wm', 'density', densityValue]);
+        break;
+      }
+
+      case 'showLayoutBounds': {
+        const boolValue = value ? 'true' : 'false';
+        await execAdb(['shell', 'setprop', 'debug.layout', boolValue]);
+        // Trigger UI refresh by broadcasting an intent
+        await execAdb(['shell', 'service', 'call', 'activity', '1599295570']).catch(() => {});
+        break;
+      }
+
+      case 'orientation': {
+        // accelerometer_rotation: 1 = auto-rotate enabled, 0 = disabled
+        // user_rotation: 0 = portrait, 1 = landscape
+        if (value === 'auto') {
+          // Enable auto-rotate
+          await execAdb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1']);
+        } else {
+          // Set target rotation FIRST, then disable auto-rotate
+          // This prevents the brief flash to wrong orientation
+          const rotation = value === 'landscape' ? '1' : '0';
+          await execAdb(['shell', 'settings', 'put', 'system', 'user_rotation', rotation]);
+          await execAdb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0']);
+        }
+        break;
+      }
+    }
   }
 
   // ==================== Session Management ====================
