@@ -7,6 +7,7 @@ import {
   createDeviceNameHeader,
   createVideoCodecMeta,
   createVideoPacket,
+  createSessionPacket,
   createAudioCodecMeta,
   createAudioPacket,
   createClipboardMessage,
@@ -30,10 +31,17 @@ export class MockScrcpyVideoStream {
   }
 
   /**
-   * Send video codec metadata (codec_id + width + height)
+   * Send video codec metadata for v4.x: codec_id (4) + SESSION packet (12).
    */
   sendCodecMeta(codecId: number, width: number, height: number): void {
     this.socket.simulateData(createVideoCodecMeta(codecId, width, height));
+  }
+
+  /**
+   * Send a mid-stream SESSION packet (rotation / encoder reset / resize).
+   */
+  sendSessionMeta(width: number, height: number, isClientResize: boolean = false): void {
+    this.socket.simulateData(createSessionPacket(width, height, isClientResize));
   }
 
   /**

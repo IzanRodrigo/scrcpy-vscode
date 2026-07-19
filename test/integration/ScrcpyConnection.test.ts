@@ -1318,7 +1318,7 @@ describe('ScrcpyConnection', () => {
           const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
 
           if (args.includes('--version')) {
-            cb?.(null, 'scrcpy 2.4\n', '');
+            cb?.(null, 'scrcpy 4.0\n', '');
             return new MockChildProcess();
           }
           if (args.includes('devices')) {
@@ -1449,7 +1449,7 @@ describe('ScrcpyConnection', () => {
           const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
 
           if (args.includes('--version')) {
-            cb?.(null, 'scrcpy 2.4\n', '');
+            cb?.(null, 'scrcpy 4.0\n', '');
             return new MockChildProcess();
           }
           if (args.includes('devices')) {
@@ -1495,7 +1495,7 @@ describe('ScrcpyConnection', () => {
           const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
 
           if (args.includes('--version')) {
-            cb?.(null, 'scrcpy 2.4\n', '');
+            cb?.(null, 'scrcpy 4.0\n', '');
             return new MockChildProcess();
           }
           if (args.includes('devices')) {
@@ -1542,7 +1542,7 @@ describe('ScrcpyConnection', () => {
           const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
 
           if (args.includes('--version')) {
-            cb?.(null, 'scrcpy 2.4\n', '');
+            cb?.(null, 'scrcpy 4.0\n', '');
             return new MockChildProcess();
           }
           if (args.includes('devices')) {

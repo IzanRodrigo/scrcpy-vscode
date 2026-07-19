@@ -142,17 +142,135 @@ Android Device                    VS Code Extension
 
 ## Protocol Details
 
-### Video Stream Format
+> The extension supports both **scrcpy v3.x and v4.x wire protocols** via the
+> strategy-pattern engines in `src/protocol/`. The right engine is selected at
+> runtime by `createProtocolEngine(scrcpyVersion)` based on the major version
+> returned by `scrcpy --version`. Older versions (v2 and below) are rejected
+> with a `ToolNotFoundError`.
+>
+> The sections below describe the **v4.x wire format** (the current default).
+> Differences in v3.x are noted inline. See the [v3 vs v4 migration note](#migration-from-v3x)
+> at the bottom of this section for a summary.
+
+### Engine architecture
+
+```
+src/protocol/
+├── ProtocolEngine.ts      # Interface + discriminated-union result types
+├── CursorBuffer.ts        # Growable byte buffer with read/write cursors
+├── V3ProtocolEngine.ts    # scrcpy 3.x: codec_id+width+height, CONFIG@bit63
+├── V4ProtocolEngine.ts    # scrcpy 4.x: SESSION packets, CONFIG@bit62
+└── createProtocolEngine.ts # Factory: version → engine
+```
+
+Engines are passive — they read bytes from a `CursorBuffer` and return results
+as discriminated unions (`{type:'need-more'}`, `{type:'session',...}`, or
+`{type:'media',...}`). `ScrcpyConnection` owns the sockets and dispatches
+engine results to the webview callbacks.
+
+**To add support for a future v5** (2-step change):
+
+1. Create `src/protocol/V5ProtocolEngine.ts` implementing `ProtocolEngine`.
+2. Add a `case 5:` to the switch in `createProtocolEngine.ts`.
+
+No edits to `ScrcpyConnection` are required.
+
+### Video Stream Format (v4.x)
 
 1. Device name (64 bytes, null-padded UTF-8)
-2. Codec metadata (12 bytes): codec_id (4) + width (4) + height (4)
-3. Video packets: pts_flags (8) + size (4) + data
+2. Codec ID (4 bytes): `0x68323634` ("h264"), `0x68323635` ("h265"), or `0x00617631` ("av1")
+3. Initial **SESSION packet** (12 bytes, see below) — contains initial `width`/`height`
+4. A sequence of SESSION packets and media packets (12-byte header each), discriminated by the MSB of byte 0
 
-### PTS Flags (8 bytes)
+> **v3.x difference**: Step 3 is replaced by an 8-byte block
+> (`width:4 + height:4`). No SESSION packets are ever sent; rotation is silent
+> and dimensions are only discoverable via SPS parsing in the decoder.
 
-- Bit 63: Config packet (SPS/PPS)
-- Bit 62: Keyframe
-- Bits 0-61: PTS value
+### SESSION Packet (12 bytes)
+
+Sent once at stream start, and again on every encoder reset (rotation, flex-display resize, capture reset).
+The MSB of byte 0 is `1` to distinguish it from a media packet.
+
+```
+byte 0   byte 1   byte 2   byte 3
+10000000 00000000 00000000 0000000R
+^<------------------------------->^  flags (top bit must be 1)
+ `- session marker                  `- R = "client resized" (set on flex-display resize)
+
+byte 4..7                               byte 8..11
+<--------------------------------->     <--------------------------------->
+           video width (BE u32)                    video height (BE u32)
+```
+
+### Media Packet Header (12 bytes)
+
+```
+[ pts_flags (8 bytes BE) ][ packet_size (4 bytes BE) ]
+[ ... packet payload of packet_size bytes ...        ]
+```
+
+### PTS/Flags bit layout (v4.x)
+
+```
+byte 0   byte 1   ...   byte 7
+0CK...... ........ ........ ........
+^^^<------------------------------>
+|||               PTS (61 bits)
+|| `- KEY_FRAME  (bit 61)
+| `-- CONFIG     (bit 62)
+ `--- SESSION    (bit 63, always 0 for media packets)
+```
+
+| Flag      | Bit  | Purpose                                 |
+| --------- | ---- | --------------------------------------- |
+| SESSION   | 63   | Set only on SESSION packets (not media) |
+| CONFIG    | 62   | SPS/PPS or audio extradata              |
+| KEY_FRAME | 61   | Sync frame (IDR for H.264/H.265)        |
+| PTS       | 0-60 | Presentation timestamp (microseconds)   |
+
+> **Migration note from v3.x**: scrcpy 3.x used bits 63/62 for CONFIG/KEY_FRAME
+> and sent an 8-byte `width|height` block in place of the SESSION packet. The MSB
+> is now reserved for SESSION, and CONFIG/KEY_FRAME shift down by one bit. This
+> affects both video and audio media packets.
+
+### Audio Stream Format
+
+1. Codec ID (4 bytes): `0x6f707573` ("opus")
+2. Media packets (12-byte header, same flag bit layout as video). No SESSION packets.
+
+> **v3.x difference**: Audio packets use bit 63 for CONFIG (not bit 62) — the
+> same shift as for video media packets.
+
+### Server Arguments
+
+The extension sends these required stream-meta args:
+
+- `send_device_meta=true` — emit the 64-byte device name on the first socket
+- `send_frame_meta=true` — emit the 12-byte per-packet header
+- `<stream-meta-arg>=true` — emit codec_id + SESSION packets. The arg name is
+  selected by the engine: `send_stream_meta` for v4.x, `send_codec_meta` for
+  v3.x (v4 renamed it).
+
+### Migration from v3.x
+
+| Aspect                    | v3.x                              | v4.x                             |
+| ------------------------- | --------------------------------- | -------------------------------- |
+| Initial video header      | `codec_id:4 + width:4 + height:4` | `codec_id:4 + SESSION packet:12` |
+| Mid-stream dimension bump | Silent (rely on SPS parsing)      | Explicit SESSION packet          |
+| CONFIG flag               | bit 63                            | bit 62                           |
+| KEY_FRAME flag            | bit 62                            | bit 61                           |
+| Server arg name           | `send_codec_meta`                 | `send_stream_meta`               |
+| Audio CONFIG bit          | bit 63                            | bit 62                           |
+
+The factory `createProtocolEngine(version)` handles both. To add v5+ support,
+see the [Engine architecture](#engine-architecture) section above.
+
+### Connection Setup
+
+1. `adb reverse localabstract:scrcpy_XXXX tcp:PORT`
+2. Start server via `adb shell app_process`
+3. Accept 2 connections (video + control) or 3 if audio enabled (video + audio + control)
+4. First positional arg to `Server.main` is the scrcpy version string (must match the server jar)
 
 ### Control Messages (Touch) - 32 bytes
 

@@ -127,8 +127,14 @@ src/
 ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar view
 ├── AppStateManager.ts    # Centralized state management (dispatch/reducer pattern)
 ├── DeviceService.ts      # Multi-device session management
-├── ScrcpyConnection.ts   # ADB communication, scrcpy protocol
+├── ScrcpyConnection.ts   # ADB communication, socket lifecycle, delegates parsing to engine
 ├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
+├── protocol/             # Version-strategy engines for scrcpy wire protocol
+│   ├── ProtocolEngine.ts      # Interface + discriminated-union result types
+│   ├── CursorBuffer.ts        # Growable byte buffer used by engines
+│   ├── V3ProtocolEngine.ts    # scrcpy 3.x: codec_id+width+height, CONFIG@bit63
+│   ├── V4ProtocolEngine.ts    # scrcpy 4.x: SESSION packets, CONFIG@bit62
+│   └── createProtocolEngine.ts # Factory: version string → engine instance
 ├── types/
 │   ├── AppState.ts       # State interfaces (DeviceState, AppStateSnapshot, etc.)
 │   ├── Actions.ts        # Typed actions for state mutations (Redux-like)
@@ -195,9 +201,9 @@ src/
   - Accepts optional `targetDeviceSerial` to connect to specific device
   - Accepts optional `onError` callback for unexpected disconnects
   - `connect()`: Discovers devices via `adb devices`
-  - `startScrcpy()`: Starts server with config-based args
-  - `handleScrcpyStream()`: Parses video protocol
-  - `handleAudioStream()`: Parses audio protocol (Opus codec)
+  - `startScrcpy()`: Starts server with config-based args; selects a `ProtocolEngine` via `createProtocolEngine(scrcpyVersion)` and stores it on `this.engine`
+  - `handleScrcpyStream()`: Buffers video socket data into a `CursorBuffer` and dispatches parsed packets from `this.engine` to the webview callback (handles `'session'` events for rotation/resize, and `'media'` packets for frames)
+  - `handleAudioStream()`: Same pattern as video but for the Opus audio stream
   - `handleControlSocketData()`: Parses device messages (clipboard, ACKs)
   - `sendTouch()`: Sends touch control messages (32 bytes, uses stored `deviceWidth`/`deviceHeight` for coordinate mapping)
   - `sendScroll()`: Sends scroll control messages (21 bytes, uses 16-bit fixed-point encoding for scroll amounts)
@@ -209,6 +215,14 @@ src/
   - `installApk()`: Installs APK via `adb install -r`
   - `pushFiles()`: Uploads files/folders in a single `adb push` command (default destination: `/sdcard/Download/`)
   - Error handling: Reports unexpected disconnects via `onError` callback (shows reconnect UI)
+
+- **protocol/**: Strategy-pattern engines for scrcpy's wire protocol
+  - scrcpy has introduced breaking wire-protocol changes at v2, v3, and v4. Each major version gets its own engine implementing the `ProtocolEngine` interface.
+  - `ProtocolEngine.ts`: Interface + discriminated-union result types (`InitialHeaderResult`, `VideoParseResult`, `AudioParseResult`). Engines are passive — they parse bytes from a `CursorBuffer` and return results; they never touch sockets or callbacks.
+  - `V3ProtocolEngine.ts`: Legacy v3.x wire format. Initial header is `codec_id:4 + width:4 + height:4` (12 bytes). PTS/flags use bit 63 for CONFIG, bit 62 for KEY_FRAME. No SESSION packets — rotation is silent.
+  - `V4ProtocolEngine.ts`: Current v4.x wire format. Initial header is `codec_id:4 + SESSION packet:12`. PTS/flags use bit 63 for SESSION, bit 62 for CONFIG, bit 61 for KEY_FRAME. SESSION packets re-sent on rotation/encoder reset.
+  - `createProtocolEngine.ts`: Factory mapping a version string to the right engine. Adding support for a future v5 is a 2-step change: (1) implement `V5ProtocolEngine`, (2) add a `case 5:` to the factory switch. Throws `ToolNotFoundError` for unsupported versions.
+  - `CursorBuffer.ts`: Growable byte buffer with read/write cursors shared by all engines.
 
 - **VideoRenderer.ts**: Multi-codec video decoding
   - Uses WebCodecs API in Annex B mode for H.264/H.265, OBU format for AV1
@@ -231,16 +245,32 @@ src/
 
 ## Protocol Notes
 
+> Implements the **scrcpy v4.x wire protocol** (introduced in scrcpy 4.0, PR
+> [Genymobile/scrcpy#6159](https://github.com/Genymobile/scrcpy/pull/6159)).
+> scrcpy **3.x is also supported** via `V3ProtocolEngine`. Older versions are
+> rejected with `ToolNotFoundError`. See [docs/internals.md](./docs/internals.md)
+> for full byte-level details.
+
 ### Video Stream (from scrcpy server)
 
 1. Device name: 64 bytes (UTF-8, null-padded)
-2. Codec metadata: 12 bytes (codec_id + width + height)
-3. Packets: 12-byte header (pts_flags + size) + data
+2. Codec ID: 4 bytes (`0x68323634`="h264", `0x68323635`="h265", `0x00617631`="av1")
+3. Initial **SESSION packet**: 12 bytes (flags u32 with MSB=1, width u32, height u32)
+4. Sequence of SESSION packets and media packets, each with a 12-byte header:
+   - SESSION packet (MSB of byte 0 = 1): 12-byte total, contains new width/height. Sent on rotation/encoder reset/virtual-display resize.
+   - Media packet: 12-byte header (`pts_flags` u64 + `size` u32) + `size` bytes of payload
+
+### PTS/Flags bit layout (8 bytes, big-endian)
+
+- Bit 63: SESSION (only set on SESSION packets, never on media packets)
+- Bit 62: CONFIG (SPS/PPS or audio extradata)
+- Bit 61: KEY_FRAME
+- Bits 0-60: PTS
 
 ### Audio Stream (from scrcpy server, when audio=true)
 
 1. Codec ID: 4 bytes (0x6f707573 = "opus")
-2. Packets: 12-byte header (pts_flags + size) + Opus data
+2. Media packets: 12-byte header (same bit layout as video, no SESSION packets)
 
 ### Control Messages (to scrcpy server)
 
@@ -249,27 +279,34 @@ src/
 - Key events: 14 bytes (type=0, action, keycode, repeat, metastate)
 - Set clipboard: variable (type=9, sequence 8 bytes, paste flag 1 byte, length 4 bytes, UTF-8 text)
 - Rotate device: 1 byte (type=11)
+- v4.x also defines: RESET_VIDEO (17), CAMERA_SET_TORCH (18), CAMERA_ZOOM_IN/OUT (19/20), RESIZE_DISPLAY (21), SCAN_FILE (22, v4.1+) — not yet exposed in UI
 
 ### Device Messages (from scrcpy server via control socket)
 
 - Clipboard: variable (type=0, length 4 bytes, UTF-8 text)
 - ACK clipboard: 9 bytes (type=1, sequence 8 bytes)
+- UHID output: variable (type=2, id 2 bytes, length 2 bytes, data)
+
+> **v4.x strictness note**: the server now throws on unknown control message types
+> instead of silently ignoring them. Don't send stale/experimental type bytes.
 
 ### Connection Setup
 
 1. `adb reverse localabstract:scrcpy_XXXX tcp:PORT`
-2. Start server via `adb shell app_process`
+2. Start server via `adb shell app_process` (first arg is the scrcpy version string, must match the server jar)
 3. Accept 2 connections (audio=false) or 3 connections (audio=true): video, [audio], control
 4. Video socket receives stream, audio socket receives Opus stream (if enabled)
 5. Control socket is bidirectional (sends touch/keys, receives clipboard)
+6. Server args include `send_device_meta=true`, `send_frame_meta=true`, `send_stream_meta=true` (renamed from `send_codec_meta` in v4.x)
 
 ## Reference: scrcpy Source
 
-The main scrcpy repository is at `/Users/izan/Dev/Projects/scrcpy/`. Key reference files:
+The main scrcpy repository is at https://github.com/Genymobile/scrcpy. Key reference files:
 
 - `server/src/main/java/com/genymobile/scrcpy/Options.java` - Server parameters
 - `server/src/main/java/com/genymobile/scrcpy/device/DesktopConnection.java` - Socket handling
-- `app/src/demuxer.c` - Protocol parsing (C client)
+- `server/src/main/java/com/genymobile/scrcpy/device/Streamer.java` - Packet framing + SESSION/CONFIG/KEY_FRAME bit positions
+- `app/src/demuxer.c` - Protocol parsing (C client), reference for SESSION packet layout
 - `app/src/decoder.c` - Video decoding (FFmpeg)
 - `app/src/packet_merger.h` - Config packet merging
 

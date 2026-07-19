@@ -50,7 +50,7 @@ function setupCommonMocks() {
       const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
 
       if (args.includes('--version')) {
-        cb?.(null, 'scrcpy 2.4\n', '');
+        cb?.(null, 'scrcpy 4.0\n', '');
         return new MockChildProcess();
       }
       if (args.includes('devices')) {
@@ -314,8 +314,8 @@ describe('ScrcpyConnection Protocol Parsing', () => {
         await nextTick();
         videoCallback.mockClear();
 
-        // Rotation to portrait
-        videoStream.sendCodecMeta(VIDEO_CODEC_IDS.H264, 1080, 1920);
+        // Rotation to portrait: server sends a fresh mid-stream SESSION packet
+        videoStream.sendSessionMeta(1080, 1920);
         await nextTick();
 
         expect(videoCallback).toHaveBeenCalledWith(
@@ -359,7 +359,7 @@ describe('ScrcpyConnection Protocol Parsing', () => {
         videoCallback.mockClear();
 
         // Invalid width (>= 10000) - should NOT trigger reconfiguration
-        videoStream.sendCodecMeta(VIDEO_CODEC_IDS.H264, 10000, 1080);
+        videoStream.sendSessionMeta(10000, 1080);
         await nextTick();
 
         const calls = videoCallback.mock.calls;
@@ -378,7 +378,7 @@ describe('ScrcpyConnection Protocol Parsing', () => {
         videoCallback.mockClear();
 
         // Invalid height (>= 10000)
-        videoStream.sendCodecMeta(VIDEO_CODEC_IDS.H264, 1920, 10001);
+        videoStream.sendSessionMeta(1920, 10001);
         await nextTick();
 
         const calls = videoCallback.mock.calls;
@@ -397,7 +397,7 @@ describe('ScrcpyConnection Protocol Parsing', () => {
         videoCallback.mockClear();
 
         // Valid boundary (9999)
-        videoStream.sendCodecMeta(VIDEO_CODEC_IDS.H264, 9999, 5000);
+        videoStream.sendSessionMeta(9999, 5000);
         await nextTick();
 
         expect(videoCallback).toHaveBeenCalledWith(
@@ -406,6 +406,32 @@ describe('ScrcpyConnection Protocol Parsing', () => {
           false,
           9999,
           5000,
+          'h264'
+        );
+      });
+
+      it('should consume SESSION packet even when dimensions are unchanged', async () => {
+        const { videoStream } = await startScrcpyWithMockSockets();
+
+        videoStream.sendFullHeader('Test', VIDEO_CODEC_IDS.H264, 1920, 1080);
+        await nextTick();
+        videoCallback.mockClear();
+
+        // Server may re-send SESSION packet on encoder reset even if dimensions are identical.
+        // The client must consume the 12-byte packet so subsequent media packets parse correctly.
+        videoStream.sendSessionMeta(1920, 1080);
+        await nextTick();
+
+        const packetData = Buffer.from([0xde, 0xad, 0xbe, 0xef]);
+        videoStream.sendVideoPacket(500n, false, false, packetData);
+        await nextTick();
+
+        expect(videoCallback).toHaveBeenCalledWith(
+          new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
+          false,
+          false,
+          undefined,
+          undefined,
           'h264'
         );
       });
@@ -433,7 +459,7 @@ describe('ScrcpyConnection Protocol Parsing', () => {
         );
       });
 
-      it('should extract config packet flag (bit 63)', async () => {
+      it('should extract config packet flag (bit 62 in v4.x)', async () => {
         const { videoStream } = await startScrcpyWithMockSockets();
 
         videoStream.sendFullHeader('Test', VIDEO_CODEC_IDS.H264, 1920, 1080);
@@ -454,7 +480,7 @@ describe('ScrcpyConnection Protocol Parsing', () => {
         );
       });
 
-      it('should extract keyframe flag (bit 62)', async () => {
+      it('should extract keyframe flag (bit 61 in v4.x)', async () => {
         const { videoStream } = await startScrcpyWithMockSockets();
 
         videoStream.sendFullHeader('Test', VIDEO_CODEC_IDS.H264, 1920, 1080);

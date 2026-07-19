@@ -158,6 +158,8 @@ export function createMockSPS(profile: number, level: number): Uint8Array {
 
 /**
  * Create a buffer containing video stream header (as sent by scrcpy server)
+ *
+ * scrcpy v4.x layout: device_name (64) + codec_id (4) + SESSION packet (12).
  */
 export function createScrcpyVideoHeader(
   deviceName: string,
@@ -165,7 +167,7 @@ export function createScrcpyVideoHeader(
   width: number,
   height: number
 ): Buffer {
-  const header = Buffer.alloc(64 + 12);
+  const header = Buffer.alloc(64 + 4 + SESSION_PACKET_SIZE);
 
   // Device name (64 bytes, null-padded)
   const nameBytes = Buffer.from(deviceName, 'utf-8');
@@ -174,11 +176,9 @@ export function createScrcpyVideoHeader(
   // Codec ID (4 bytes)
   header.writeUInt32BE(codecId, 64);
 
-  // Initial width (4 bytes)
-  header.writeUInt32BE(width, 68);
-
-  // Initial height (4 bytes)
-  header.writeUInt32BE(height, 72);
+  // SESSION packet (12 bytes): flags(4) + width(4) + height(4)
+  // MSB of the flags u32 must be set (0x80000000) to indicate a session packet.
+  writeSessionPacket(header, 68, width, height, false);
 
   return header;
 }
@@ -202,6 +202,16 @@ export const VIDEO_CODEC_IDS = {
 };
 
 /**
+ * scrcpy v4.x packet flag bit positions (high bits of the 8-byte PTS/flags field)
+ */
+export const PACKET_FLAG_SESSION = 1n << 63n;
+export const PACKET_FLAG_CONFIG = 1n << 62n;
+export const PACKET_FLAG_KEY_FRAME = 1n << 61n;
+
+export const PACKET_HEADER_SIZE = 12;
+export const SESSION_PACKET_SIZE = 12;
+
+/**
  * Create a device name header (64 bytes, null-padded)
  */
 export function createDeviceNameHeader(name: string): Buffer {
@@ -212,13 +222,46 @@ export function createDeviceNameHeader(name: string): Buffer {
 }
 
 /**
- * Create video codec metadata (12 bytes: codec_id + width + height)
+ * Write a scrcpy v4.x SESSION packet into a buffer at the given offset.
+ * Layout: flags(4) + width(4) + height(4) = 12 bytes; MSB of flags u32 is set.
+ */
+export function writeSessionPacket(
+  buf: Buffer,
+  offset: number,
+  width: number,
+  height: number,
+  isClientResize: boolean = false
+): void {
+  // Top bit of the high byte must be 1 (session flag); low bit of byte 3 = client-resized.
+  let flags = 0x80000000;
+  if (isClientResize) {
+    flags |= 1;
+  }
+  buf.writeUInt32BE(flags >>> 0, offset);
+  buf.writeUInt32BE(width, offset + 4);
+  buf.writeUInt32BE(height, offset + 8);
+}
+
+/**
+ * Create a standalone SESSION packet (12 bytes) for mid-stream injection.
+ */
+export function createSessionPacket(
+  width: number,
+  height: number,
+  isClientResize: boolean = false
+): Buffer {
+  const pkt = Buffer.alloc(SESSION_PACKET_SIZE);
+  writeSessionPacket(pkt, 0, width, height, isClientResize);
+  return pkt;
+}
+
+/**
+ * Create video codec header for v4.x: codec_id (4) + SESSION packet (12).
  */
 export function createVideoCodecMeta(codecId: number, width: number, height: number): Buffer {
-  const meta = Buffer.alloc(12);
+  const meta = Buffer.alloc(4 + SESSION_PACKET_SIZE);
   meta.writeUInt32BE(codecId, 0);
-  meta.writeUInt32BE(width, 4);
-  meta.writeUInt32BE(height, 8);
+  writeSessionPacket(meta, 4, width, height, false);
   return meta;
 }
 
@@ -234,8 +277,8 @@ export function createAudioCodecMeta(codecId: number = AUDIO_OPUS_CODEC_ID): Buf
 /**
  * Create a video packet with header
  * @param pts - Presentation timestamp
- * @param isConfig - Set config flag (bit 63)
- * @param isKeyFrame - Set keyframe flag (bit 62)
+ * @param isConfig - Set config flag (bit 62 in v4.x)
+ * @param isKeyFrame - Set keyframe flag (bit 61 in v4.x)
  * @param data - Packet payload data
  */
 export function createVideoPacket(
@@ -244,15 +287,20 @@ export function createVideoPacket(
   isKeyFrame: boolean,
   data: Buffer
 ): Buffer {
-  const packet = Buffer.alloc(12 + data.length);
+  const packet = Buffer.alloc(PACKET_HEADER_SIZE + data.length);
 
-  // Build pts_flags: 8 bytes
+  // Build pts_flags: 8 bytes. v4.x bit layout (MSB-first):
+  //   bit 63 = SESSION (always 0 for media packets)
+  //   bit 62 = CONFIG
+  //   bit 61 = KEY_FRAME
+  //   bits 60..0 = PTS
   let ptsFlags = pts;
   if (isConfig) {
-    ptsFlags |= 1n << 63n;
-  }
-  if (isKeyFrame) {
-    ptsFlags |= 1n << 62n;
+    ptsFlags = PACKET_FLAG_CONFIG;
+  } else {
+    if (isKeyFrame) {
+      ptsFlags |= PACKET_FLAG_KEY_FRAME;
+    }
   }
   packet.writeBigUInt64BE(ptsFlags, 0);
 
@@ -260,24 +308,92 @@ export function createVideoPacket(
   packet.writeUInt32BE(data.length, 8);
 
   // Packet data
-  data.copy(packet, 12);
+  data.copy(packet, PACKET_HEADER_SIZE);
 
   return packet;
 }
 
 /**
- * Create an audio packet with header (same format as video)
+ * Create an audio packet with header (same media-packet format as video;
+ * audio never uses SESSION packets but shares the same flag bit positions).
  */
 export function createAudioPacket(pts: bigint, isConfig: boolean, data: Buffer): Buffer {
-  const packet = Buffer.alloc(12 + data.length);
+  const packet = Buffer.alloc(PACKET_HEADER_SIZE + data.length);
 
   let ptsFlags = pts;
   if (isConfig) {
-    ptsFlags |= 1n << 63n;
+    ptsFlags = PACKET_FLAG_CONFIG;
   }
   packet.writeBigUInt64BE(ptsFlags, 0);
   packet.writeUInt32BE(data.length, 8);
-  data.copy(packet, 12);
+  data.copy(packet, PACKET_HEADER_SIZE);
+
+  return packet;
+}
+
+// ============================================
+// scrcpy v3.x wire format helpers (legacy)
+// ============================================
+
+/**
+ * scrcpy v3.x packet flag bit positions (one bit higher than v4.x).
+ * There is no SESSION flag in v3.x — CONFIG occupies bit 63.
+ */
+export const V3_PACKET_FLAG_CONFIG = 1n << 63n;
+export const V3_PACKET_FLAG_KEY_FRAME = 1n << 62n;
+
+/**
+ * Create a video stream header for v3.x: codec_id (4) + width (4) + height (4).
+ * (No SESSION packet — that was introduced in v4.x.)
+ */
+export function createVideoCodecMetaV3(codecId: number, width: number, height: number): Buffer {
+  const meta = Buffer.alloc(12);
+  meta.writeUInt32BE(codecId, 0);
+  meta.writeUInt32BE(width, 4);
+  meta.writeUInt32BE(height, 8);
+  return meta;
+}
+
+/**
+ * Create a v3.x video packet. PTS/flags bit layout:
+ *   bit 63 = CONFIG
+ *   bit 62 = KEY_FRAME
+ *   bits 0-61 = PTS
+ */
+export function createVideoPacketV3(
+  pts: bigint,
+  isConfig: boolean,
+  isKeyFrame: boolean,
+  data: Buffer
+): Buffer {
+  const packet = Buffer.alloc(PACKET_HEADER_SIZE + data.length);
+
+  let ptsFlags = pts;
+  if (isConfig) {
+    ptsFlags = V3_PACKET_FLAG_CONFIG;
+  } else if (isKeyFrame) {
+    ptsFlags |= V3_PACKET_FLAG_KEY_FRAME;
+  }
+  packet.writeBigUInt64BE(ptsFlags, 0);
+  packet.writeUInt32BE(data.length, 8);
+  data.copy(packet, PACKET_HEADER_SIZE);
+
+  return packet;
+}
+
+/**
+ * Create a v3.x audio packet (same media-packet format as video; no SESSION).
+ */
+export function createAudioPacketV3(pts: bigint, isConfig: boolean, data: Buffer): Buffer {
+  const packet = Buffer.alloc(PACKET_HEADER_SIZE + data.length);
+
+  let ptsFlags = pts;
+  if (isConfig) {
+    ptsFlags = V3_PACKET_FLAG_CONFIG;
+  }
+  packet.writeBigUInt64BE(ptsFlags, 0);
+  packet.writeUInt32BE(data.length, 8);
+  data.copy(packet, PACKET_HEADER_SIZE);
 
   return packet;
 }
