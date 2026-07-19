@@ -127,8 +127,14 @@ src/
 ├── ScrcpyViewProvider.ts # WebviewView provider for sidebar view
 ├── AppStateManager.ts    # Centralized state management (dispatch/reducer pattern)
 ├── DeviceService.ts      # Multi-device session management
-├── ScrcpyConnection.ts   # ADB communication, scrcpy protocol
+├── ScrcpyConnection.ts   # ADB communication, socket lifecycle, delegates parsing to engine
 ├── ScrcpyProtocol.ts     # Protocol constants and codec IDs
+├── protocol/             # Version-strategy engines for scrcpy wire protocol
+│   ├── ProtocolEngine.ts      # Interface + discriminated-union result types
+│   ├── CursorBuffer.ts        # Growable byte buffer used by engines
+│   ├── V3ProtocolEngine.ts    # scrcpy 3.x: codec_id+width+height, CONFIG@bit63
+│   ├── V4ProtocolEngine.ts    # scrcpy 4.x: SESSION packets, CONFIG@bit62
+│   └── createProtocolEngine.ts # Factory: version string → engine instance
 ├── types/
 │   ├── AppState.ts       # State interfaces (DeviceState, AppStateSnapshot, etc.)
 │   ├── Actions.ts        # Typed actions for state mutations (Redux-like)
@@ -195,9 +201,9 @@ src/
   - Accepts optional `targetDeviceSerial` to connect to specific device
   - Accepts optional `onError` callback for unexpected disconnects
   - `connect()`: Discovers devices via `adb devices`
-  - `startScrcpy()`: Starts server with config-based args
-  - `handleScrcpyStream()`: Parses video protocol
-  - `handleAudioStream()`: Parses audio protocol (Opus codec)
+  - `startScrcpy()`: Starts server with config-based args; selects a `ProtocolEngine` via `createProtocolEngine(scrcpyVersion)` and stores it on `this.engine`
+  - `handleScrcpyStream()`: Buffers video socket data into a `CursorBuffer` and dispatches parsed packets from `this.engine` to the webview callback (handles `'session'` events for rotation/resize, and `'media'` packets for frames)
+  - `handleAudioStream()`: Same pattern as video but for the Opus audio stream
   - `handleControlSocketData()`: Parses device messages (clipboard, ACKs)
   - `sendTouch()`: Sends touch control messages (32 bytes, uses stored `deviceWidth`/`deviceHeight` for coordinate mapping)
   - `sendScroll()`: Sends scroll control messages (21 bytes, uses 16-bit fixed-point encoding for scroll amounts)
@@ -209,6 +215,14 @@ src/
   - `installApk()`: Installs APK via `adb install -r`
   - `pushFiles()`: Uploads files/folders in a single `adb push` command (default destination: `/sdcard/Download/`)
   - Error handling: Reports unexpected disconnects via `onError` callback (shows reconnect UI)
+
+- **protocol/**: Strategy-pattern engines for scrcpy's wire protocol
+  - scrcpy has introduced breaking wire-protocol changes at v2, v3, and v4. Each major version gets its own engine implementing the `ProtocolEngine` interface.
+  - `ProtocolEngine.ts`: Interface + discriminated-union result types (`InitialHeaderResult`, `VideoParseResult`, `AudioParseResult`). Engines are passive — they parse bytes from a `CursorBuffer` and return results; they never touch sockets or callbacks.
+  - `V3ProtocolEngine.ts`: Legacy v3.x wire format. Initial header is `codec_id:4 + width:4 + height:4` (12 bytes). PTS/flags use bit 63 for CONFIG, bit 62 for KEY_FRAME. No SESSION packets — rotation is silent.
+  - `V4ProtocolEngine.ts`: Current v4.x wire format. Initial header is `codec_id:4 + SESSION packet:12`. PTS/flags use bit 63 for SESSION, bit 62 for CONFIG, bit 61 for KEY_FRAME. SESSION packets re-sent on rotation/encoder reset.
+  - `createProtocolEngine.ts`: Factory mapping a version string to the right engine. Adding support for a future v5 is a 2-step change: (1) implement `V5ProtocolEngine`, (2) add a `case 5:` to the factory switch. Throws `ToolNotFoundError` for unsupported versions.
+  - `CursorBuffer.ts`: Growable byte buffer with read/write cursors shared by all engines.
 
 - **VideoRenderer.ts**: Multi-codec video decoding
   - Uses WebCodecs API in Annex B mode for H.264/H.265, OBU format for AV1
@@ -233,7 +247,8 @@ src/
 
 > Implements the **scrcpy v4.x wire protocol** (introduced in scrcpy 4.0, PR
 > [Genymobile/scrcpy#6159](https://github.com/Genymobile/scrcpy/pull/6159)).
-> scrcpy 3.x is no longer supported. See [docs/internals.md](./docs/internals.md)
+> scrcpy **3.x is also supported** via `V3ProtocolEngine`. Older versions are
+> rejected with `ToolNotFoundError`. See [docs/internals.md](./docs/internals.md)
 > for full byte-level details.
 
 ### Video Stream (from scrcpy server)

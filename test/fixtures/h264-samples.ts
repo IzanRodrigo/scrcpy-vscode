@@ -331,6 +331,73 @@ export function createAudioPacket(pts: bigint, isConfig: boolean, data: Buffer):
   return packet;
 }
 
+// ============================================
+// scrcpy v3.x wire format helpers (legacy)
+// ============================================
+
+/**
+ * scrcpy v3.x packet flag bit positions (one bit higher than v4.x).
+ * There is no SESSION flag in v3.x — CONFIG occupies bit 63.
+ */
+export const V3_PACKET_FLAG_CONFIG = 1n << 63n;
+export const V3_PACKET_FLAG_KEY_FRAME = 1n << 62n;
+
+/**
+ * Create a video stream header for v3.x: codec_id (4) + width (4) + height (4).
+ * (No SESSION packet — that was introduced in v4.x.)
+ */
+export function createVideoCodecMetaV3(codecId: number, width: number, height: number): Buffer {
+  const meta = Buffer.alloc(12);
+  meta.writeUInt32BE(codecId, 0);
+  meta.writeUInt32BE(width, 4);
+  meta.writeUInt32BE(height, 8);
+  return meta;
+}
+
+/**
+ * Create a v3.x video packet. PTS/flags bit layout:
+ *   bit 63 = CONFIG
+ *   bit 62 = KEY_FRAME
+ *   bits 0-61 = PTS
+ */
+export function createVideoPacketV3(
+  pts: bigint,
+  isConfig: boolean,
+  isKeyFrame: boolean,
+  data: Buffer
+): Buffer {
+  const packet = Buffer.alloc(PACKET_HEADER_SIZE + data.length);
+
+  let ptsFlags = pts;
+  if (isConfig) {
+    ptsFlags = V3_PACKET_FLAG_CONFIG;
+  } else if (isKeyFrame) {
+    ptsFlags |= V3_PACKET_FLAG_KEY_FRAME;
+  }
+  packet.writeBigUInt64BE(ptsFlags, 0);
+  packet.writeUInt32BE(data.length, 8);
+  data.copy(packet, PACKET_HEADER_SIZE);
+
+  return packet;
+}
+
+/**
+ * Create a v3.x audio packet (same media-packet format as video; no SESSION).
+ */
+export function createAudioPacketV3(pts: bigint, isConfig: boolean, data: Buffer): Buffer {
+  const packet = Buffer.alloc(PACKET_HEADER_SIZE + data.length);
+
+  let ptsFlags = pts;
+  if (isConfig) {
+    ptsFlags = V3_PACKET_FLAG_CONFIG;
+  }
+  packet.writeBigUInt64BE(ptsFlags, 0);
+  packet.writeUInt32BE(data.length, 8);
+  data.copy(packet, PACKET_HEADER_SIZE);
+
+  return packet;
+}
+
 /**
  * Device message type constants
  */

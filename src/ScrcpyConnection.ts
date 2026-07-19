@@ -5,6 +5,9 @@ import * as path from 'path';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { ScrcpyProtocol } from './ScrcpyProtocol';
 import { ToolNotFoundError, ToolErrorCode } from './types/AppState';
+import { CursorBuffer } from './protocol/CursorBuffer';
+import { createProtocolEngine } from './protocol/createProtocolEngine';
+import type { ProtocolEngine } from './protocol/ProtocolEngine';
 
 // Video codec type
 export type VideoCodecType = 'h264' | 'h265' | 'av1';
@@ -99,108 +102,9 @@ export class ScrcpyConnection {
   // Detected video codec from stream
   private detectedCodec: VideoCodecType = 'h264';
 
-  /**
-   * Simple growable byte buffer with read/write cursors.
-   * Avoids per-chunk Buffer.concat by compacting/growing occasionally.
-   */
-  private static CursorBuffer = class {
-    private buf: Buffer;
-    private readPos = 0;
-    private writePos = 0;
-
-    constructor(initialCapacity = 64 * 1024) {
-      this.buf = Buffer.allocUnsafe(initialCapacity);
-    }
-
-    available(): number {
-      return this.writePos - this.readPos;
-    }
-
-    append(chunk: Buffer): void {
-      if (chunk.length === 0) {
-        return;
-      }
-      this.ensureWritable(chunk.length);
-      chunk.copy(this.buf, this.writePos);
-      this.writePos += chunk.length;
-    }
-
-    peekUInt8(relOffset = 0): number {
-      return this.buf.readUInt8(this.readPos + relOffset);
-    }
-
-    peekUInt32BE(relOffset = 0): number {
-      return this.buf.readUInt32BE(this.readPos + relOffset);
-    }
-
-    peekBigUInt64BE(relOffset = 0): bigint {
-      return this.buf.readBigUInt64BE(this.readPos + relOffset);
-    }
-
-    readUInt32BE(): number {
-      const v = this.buf.readUInt32BE(this.readPos);
-      this.readPos += 4;
-      this.maybeReset();
-      return v;
-    }
-
-    readBigUInt64BE(): bigint {
-      const v = this.buf.readBigUInt64BE(this.readPos);
-      this.readPos += 8;
-      this.maybeReset();
-      return v;
-    }
-
-    readBytes(length: number): Buffer {
-      const out = this.buf.subarray(this.readPos, this.readPos + length);
-      this.readPos += length;
-      this.maybeReset();
-      return out;
-    }
-
-    discard(length: number): void {
-      this.readPos += length;
-      this.maybeReset();
-    }
-
-    private ensureWritable(length: number): void {
-      const freeTail = this.buf.length - this.writePos;
-      if (freeTail >= length) {
-        return;
-      }
-
-      // Compact unread bytes to the front if it helps.
-      if (this.readPos > 0) {
-        this.buf.copy(this.buf, 0, this.readPos, this.writePos);
-        this.writePos -= this.readPos;
-        this.readPos = 0;
-      }
-
-      if (this.buf.length - this.writePos >= length) {
-        return;
-      }
-
-      // Grow buffer capacity (doubling).
-      const required = this.writePos + length;
-      let newCap = this.buf.length === 0 ? 1024 : this.buf.length;
-      while (newCap < required) {
-        newCap *= 2;
-      }
-
-      const next = Buffer.allocUnsafe(newCap);
-      if (this.writePos > 0) {
-        this.buf.copy(next, 0, 0, this.writePos);
-      }
-      this.buf = next;
-    }
-
-    private maybeReset(): void {
-      if (this.readPos === this.writePos) {
-        this.readPos = 0;
-        this.writePos = 0;
-      }
-    }
-  };
+  // Protocol engine selected for the installed scrcpy version (v3 or v4).
+  // Delegates all stream parsing. Set in startScrcpy() after the version check.
+  private engine: ProtocolEngine | null = null;
 
   constructor(
     private onVideoFrame: VideoFrameCallback,
@@ -292,6 +196,10 @@ export class ScrcpyConnection {
     // Get installed scrcpy version
     const scrcpyVersion = await this.getScrcpyVersion();
     this.onStatus(vscode.l10n.t('Using scrcpy {0}', scrcpyVersion));
+
+    // Select the protocol engine for the installed scrcpy major version.
+    // Throws ToolNotFoundError for unsupported versions (e.g. v2 or older).
+    this.engine = createProtocolEngine(scrcpyVersion);
 
     // Ensure scrcpy server exists on device
     await this.ensureServerOnDevice();
@@ -459,7 +367,7 @@ export class ScrcpyConnection {
       ...(this.config.keyboardMode === 'uhid' ? ['keyboard=uhid'] : []),
       'send_device_meta=true',
       'send_frame_meta=true',
-      'send_stream_meta=true',
+      `${this.engine.serverStreamMetaArg}=true`,
     ];
 
     this.adbProcess = spawn(this.getAdbCommand(), serverArgs, {
@@ -698,14 +606,19 @@ export class ScrcpyConnection {
   private handleScrcpyStream(socket: net.Socket): void {
     this.videoSocket = socket;
 
-    const buffer = new ScrcpyConnection.CursorBuffer(256 * 1024);
+    const buffer = new CursorBuffer(256 * 1024);
     let headerReceived = false;
     let codecReceived = false;
 
     socket.on('data', (chunk: Buffer) => {
       buffer.append(chunk);
 
-      // Parse scrcpy protocol
+      const engine = this.engine;
+      if (!engine) {
+        // Should never happen — engine is set in startScrcpy() before sockets connect.
+        return;
+      }
+
       while (buffer.available() > 0) {
         if (!headerReceived) {
           // First, receive device name (64 bytes)
@@ -723,37 +636,29 @@ export class ScrcpyConnection {
         }
 
         if (!codecReceived) {
-          // scrcpy v4.x video header: codec_id (4) + SESSION packet (12)
-          // The SESSION packet starts with MSB=1 and contains width/height.
-          if (buffer.available() < 4 + ScrcpyProtocol.SESSION_PACKET_SIZE) {
+          const result = engine.parseInitialVideoHeader(buffer);
+          if (result.type === 'need-more') {
             break;
           }
 
-          const codecId = buffer.readUInt32BE();
-
           // Determine codec type from codec ID
-          if (codecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265) {
+          if (result.codecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265) {
             this.detectedCodec = 'h265';
-          } else if (codecId === ScrcpyProtocol.VIDEO_CODEC_ID_AV1) {
+          } else if (result.codecId === ScrcpyProtocol.VIDEO_CODEC_ID_AV1) {
             this.detectedCodec = 'av1';
           } else {
             this.detectedCodec = 'h264';
           }
 
-          // Parse mandatory SESSION packet (12 bytes)
-          const sessionPacket = buffer.readBytes(ScrcpyProtocol.SESSION_PACKET_SIZE);
-          if ((sessionPacket[0] & 0x80) === 0) {
-            console.error('Expected SESSION packet after codec_id but MSB was 0');
-          }
-          this.deviceWidth = sessionPacket.readUInt32BE(4);
-          this.deviceHeight = sessionPacket.readUInt32BE(8);
-
-          console.log(
-            `Video: codec=0x${codecId.toString(16)} (${this.detectedCodec}), ${this.deviceWidth}x${this.deviceHeight}`
-          );
+          this.deviceWidth = result.width;
+          this.deviceHeight = result.height;
           codecReceived = true;
 
-          // Notify webview of video dimensions and codec
+          console.log(
+            `Video: codec=0x${result.codecId.toString(16)} (${this.detectedCodec}), ` +
+              `${this.deviceWidth}x${this.deviceHeight}`
+          );
+
           this.onVideoFrame(
             new Uint8Array(0),
             true,
@@ -765,27 +670,22 @@ export class ScrcpyConnection {
           continue;
         }
 
-        // Peek the next 12-byte header. In v4.x the MSB of byte 0 discriminates:
-        //   1xxxxxxx = SESSION packet (sent on rotation / encoder reset / resize)
-        //   0Ck...... = media packet (PTS/flags + size + payload)
-        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE) {
+        const result = engine.parseNextVideoPacket(buffer);
+        if (result.type === 'need-more') {
           break;
         }
 
-        if ((buffer.peekUInt8(0) & 0x80) !== 0) {
-          // Mid-stream SESSION packet: parse new dimensions and notify webview.
-          if (buffer.available() < ScrcpyProtocol.SESSION_PACKET_SIZE) {
-            break;
-          }
-          const sessionPacket = buffer.readBytes(ScrcpyProtocol.SESSION_PACKET_SIZE);
-          const newWidth = sessionPacket.readUInt32BE(4);
-          const newHeight = sessionPacket.readUInt32BE(8);
-          // byte 3, bit 0 = "client resized" flag (ignored here)
-
-          if (newWidth > 0 && newWidth < 10000 && newHeight > 0 && newHeight < 10000) {
-            if (newWidth !== this.deviceWidth || newHeight !== this.deviceHeight) {
-              this.deviceWidth = newWidth;
-              this.deviceHeight = newHeight;
+        if (result.type === 'session') {
+          // Sanity-check dimensions before applying (defensive against corrupted packets).
+          if (
+            result.width > 0 &&
+            result.width < 10000 &&
+            result.height > 0 &&
+            result.height < 10000
+          ) {
+            if (result.width !== this.deviceWidth || result.height !== this.deviceHeight) {
+              this.deviceWidth = result.width;
+              this.deviceHeight = result.height;
               console.log(`Video session changed: ${this.deviceWidth}x${this.deviceHeight}`);
               this.onVideoFrame(
                 new Uint8Array(0),
@@ -800,31 +700,11 @@ export class ScrcpyConnection {
           continue;
         }
 
-        // Media packet: pts_flags (8) + packet_size (4) + data
-        const ptsFlags = buffer.peekBigUInt64BE(0);
-        const packetSize = buffer.peekUInt32BE(8);
-
-        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE + packetSize) {
-          break;
-        }
-
-        // Consume header
-        buffer.discard(ScrcpyProtocol.PACKET_HEADER_SIZE);
-
-        // v4.x flag bit positions (shifted down by 1 from v3.x):
-        //   bit 63 = SESSION (always 0 on this path)
-        //   bit 62 = CONFIG
-        //   bit 61 = KEY_FRAME
-        const isConfig = (ptsFlags & ScrcpyProtocol.PACKET_FLAG_CONFIG) !== 0n;
-        const isKeyFrame = (ptsFlags & ScrcpyProtocol.PACKET_FLAG_KEY_FRAME) !== 0n;
-
-        const packetData = buffer.readBytes(packetSize);
-
-        // Send to webview with codec info
+        // media packet
         this.onVideoFrame(
-          new Uint8Array(packetData),
-          isConfig,
-          isKeyFrame,
+          result.data,
+          result.isConfig,
+          result.isKeyFrame,
           undefined,
           undefined,
           this.detectedCodec
@@ -856,13 +736,17 @@ export class ScrcpyConnection {
   private handleAudioStream(socket: net.Socket): void {
     this.audioSocket = socket;
 
-    const buffer = new ScrcpyConnection.CursorBuffer(64 * 1024);
+    const buffer = new CursorBuffer(64 * 1024);
     let codecReceived = false;
 
     socket.on('data', (chunk: Buffer) => {
       buffer.append(chunk);
 
-      // Parse audio protocol
+      const engine = this.engine;
+      if (!engine) {
+        return;
+      }
+
       while (buffer.available() > 0) {
         if (!codecReceived) {
           // Audio codec metadata: codec_id (4 bytes only)
@@ -881,34 +765,21 @@ export class ScrcpyConnection {
           continue;
         }
 
-        // Audio packets: pts_flags (8) + packet_size (4) + data
-        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE) {
+        const result = engine.parseNextAudioPacket(buffer);
+        if (result.type === 'need-more') {
           break;
         }
-
-        const ptsFlags = buffer.peekBigUInt64BE(0);
-        const packetSize = buffer.peekUInt32BE(8);
-
-        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE + packetSize) {
-          break;
-        }
-
-        buffer.discard(ScrcpyProtocol.PACKET_HEADER_SIZE);
-        // v4.x: CONFIG moved from bit 63 to bit 62 (bit 63 is now SESSION, unused for audio)
-        const isConfig = (ptsFlags & ScrcpyProtocol.PACKET_FLAG_CONFIG) !== 0n;
-        const packetData = buffer.readBytes(packetSize);
 
         // Log first few audio packets for debugging
         this._audioPacketCount++;
         if (this._audioPacketCount <= 5) {
           console.log(
-            `Audio packet #${this._audioPacketCount}: size=${packetSize}, isConfig=${isConfig}`
+            `Audio packet #${this._audioPacketCount}: size=${result.data.length}, isConfig=${result.isConfig}`
           );
         }
 
-        // Send to webview
         if (this.onAudioFrame) {
-          this.onAudioFrame(new Uint8Array(packetData), isConfig);
+          this.onAudioFrame(result.data, result.isConfig);
         }
       }
     });

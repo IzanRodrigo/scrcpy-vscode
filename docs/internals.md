@@ -142,15 +142,49 @@ Android Device                    VS Code Extension
 
 ## Protocol Details
 
-> The extension implements the **scrcpy v4.x wire protocol** (introduced in scrcpy 4.0, PR #6159).
-> Older scrcpy 3.x servers are not supported.
+> The extension supports both **scrcpy v3.x and v4.x wire protocols** via the
+> strategy-pattern engines in `src/protocol/`. The right engine is selected at
+> runtime by `createProtocolEngine(scrcpyVersion)` based on the major version
+> returned by `scrcpy --version`. Older versions (v2 and below) are rejected
+> with a `ToolNotFoundError`.
+>
+> The sections below describe the **v4.x wire format** (the current default).
+> Differences in v3.x are noted inline. See the [v3 vs v4 migration note](#migration-from-v3x)
+> at the bottom of this section for a summary.
 
-### Video Stream Format
+### Engine architecture
+
+```
+src/protocol/
+├── ProtocolEngine.ts      # Interface + discriminated-union result types
+├── CursorBuffer.ts        # Growable byte buffer with read/write cursors
+├── V3ProtocolEngine.ts    # scrcpy 3.x: codec_id+width+height, CONFIG@bit63
+├── V4ProtocolEngine.ts    # scrcpy 4.x: SESSION packets, CONFIG@bit62
+└── createProtocolEngine.ts # Factory: version → engine
+```
+
+Engines are passive — they read bytes from a `CursorBuffer` and return results
+as discriminated unions (`{type:'need-more'}`, `{type:'session',...}`, or
+`{type:'media',...}`). `ScrcpyConnection` owns the sockets and dispatches
+engine results to the webview callbacks.
+
+**To add support for a future v5** (2-step change):
+
+1. Create `src/protocol/V5ProtocolEngine.ts` implementing `ProtocolEngine`.
+2. Add a `case 5:` to the switch in `createProtocolEngine.ts`.
+
+No edits to `ScrcpyConnection` are required.
+
+### Video Stream Format (v4.x)
 
 1. Device name (64 bytes, null-padded UTF-8)
 2. Codec ID (4 bytes): `0x68323634` ("h264"), `0x68323635` ("h265"), or `0x00617631` ("av1")
 3. Initial **SESSION packet** (12 bytes, see below) — contains initial `width`/`height`
 4. A sequence of SESSION packets and media packets (12-byte header each), discriminated by the MSB of byte 0
+
+> **v3.x difference**: Step 3 is replaced by an 8-byte block
+> (`width:4 + height:4`). No SESSION packets are ever sent; rotation is silent
+> and dimensions are only discoverable via SPS parsing in the decoder.
 
 ### SESSION Packet (12 bytes)
 
@@ -204,13 +238,32 @@ byte 0   byte 1   ...   byte 7
 1. Codec ID (4 bytes): `0x6f707573` ("opus")
 2. Media packets (12-byte header, same flag bit layout as video). No SESSION packets.
 
+> **v3.x difference**: Audio packets use bit 63 for CONFIG (not bit 62) — the
+> same shift as for video media packets.
+
 ### Server Arguments
 
 The extension sends these required stream-meta args:
 
 - `send_device_meta=true` — emit the 64-byte device name on the first socket
 - `send_frame_meta=true` — emit the 12-byte per-packet header
-- `send_stream_meta=true` — emit codec_id + SESSION packets (renamed from `send_codec_meta` in v4.x)
+- `<stream-meta-arg>=true` — emit codec_id + SESSION packets. The arg name is
+  selected by the engine: `send_stream_meta` for v4.x, `send_codec_meta` for
+  v3.x (v4 renamed it).
+
+### Migration from v3.x
+
+| Aspect                    | v3.x                              | v4.x                             |
+| ------------------------- | --------------------------------- | -------------------------------- |
+| Initial video header      | `codec_id:4 + width:4 + height:4` | `codec_id:4 + SESSION packet:12` |
+| Mid-stream dimension bump | Silent (rely on SPS parsing)      | Explicit SESSION packet          |
+| CONFIG flag               | bit 63                            | bit 62                           |
+| KEY_FRAME flag            | bit 62                            | bit 61                           |
+| Server arg name           | `send_codec_meta`                 | `send_stream_meta`               |
+| Audio CONFIG bit          | bit 63                            | bit 62                           |
+
+The factory `createProtocolEngine(version)` handles both. To add v5+ support,
+see the [Engine architecture](#engine-architecture) section above.
 
 ### Connection Setup
 
