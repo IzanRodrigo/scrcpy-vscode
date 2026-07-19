@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING: scrcpy v4.x protocol support** - The extension now requires scrcpy 3.0 or newer. scrcpy 2.x and older are no longer supported. Fixes screen mirroring not displaying after upgrading to scrcpy 4.0 (#9).
+- **BREAKING: scrcpy v4.x protocol support** - The extension now supports both scrcpy 3.x and 4.x wire formats. Fixes screen mirroring not displaying after upgrading to scrcpy 4.0 (#9).
 - **Strategy-pattern protocol engines** - Wire-protocol parsing is now encapsulated in `src/protocol/` engines (`V3ProtocolEngine`, `V4ProtocolEngine`) selected by `createProtocolEngine(version)`. Adding support for a future v5 is a 2-step change: implement the engine, add a `case 5:` to the factory. No edits to `ScrcpyConnection` required.
-- **scrcpy v3.x backwards compatibility** - The legacy v3.x wire format (`codec_id + width + height` header, CONFIG at bit 63) is supported via `V3ProtocolEngine`. Users on older distros (Debian stable, Ubuntu LTS) with scrcpy 3.x continue to work.
+- **scrcpy v3.x backwards compatibility** - The legacy v3.x wire format (`codec_id + width + height` header, CONFIG at bit 63) is now explicitly supported via `V3ProtocolEngine`. Previously the extension assumed v3 format unconditionally; now it dispatches based on the installed scrcpy version.
 - **Video stream parser rewritten** - Implements the new scrcpy v4.x session-packet wire format introduced in PR [Genymobile/scrcpy#6159](https://github.com/Genymobile/scrcpy/pull/6159). The initial `codec_id` is now followed by a 12-byte SESSION packet (instead of the old 8-byte `width|height` block), and mid-stream SESSION packets are emitted on encoder resets (rotation, capture reset, virtual-display resize).
 - **PTS/flags bit positions shifted** - In v4.x the new SESSION flag occupies bit 63, pushing CONFIG down to bit 62 and KEY_FRAME down to bit 61 (previously bits 63 and 62). Applies to both video and audio media packets. v3.x engines use the legacy positions.
 - **Server arg is now version-dependent** - The stream-meta arg is `send_stream_meta` for v4.x servers, `send_codec_meta` for v3.x. Each engine exposes the right name via `ProtocolEngine.serverStreamMetaArg`.
@@ -21,11 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/protocol/` package** - `ProtocolEngine` interface, `CursorBuffer` (extracted), `V3ProtocolEngine`, `V4ProtocolEngine`, and `createProtocolEngine` factory.
 - **`PACKET_FLAG_SESSION`/`PACKET_FLAG_CONFIG`/`PACKET_FLAG_KEY_FRAME` constants** exported from `ScrcpyProtocol.ts`, plus the v4.x control message types (`RESET_VIDEO`, `CAMERA_SET_TORCH`, `CAMERA_ZOOM_IN/OUT`, `RESIZE_DISPLAY`, `SCAN_FILE`) for future use.
 - **Protocol engine tests** - `test/unit/protocol/` covers V3, V4, and factory dispatch in isolation (no socket mocking required).
-
-### Removed
-
-- **scrcpy 2.x compatibility** - The factory now throws `ToolNotFoundError` for scrcpy versions older than 3.0 with a helpful upgrade message.
-- **Inline protocol parsing in ScrcpyConnection** - Replaced by engine delegation; the `CursorBuffer` class moved to its own file.
+- **Clear error for unsupported scrcpy versions** - The factory throws `ToolNotFoundError` with an upgrade message for scrcpy 2.x and older. Previously these versions silently failed with a blank screen.
 
 ## [0.1.4] - 2025-12-18
 
