@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING: scrcpy v4.x protocol support** - The extension now supports both scrcpy 3.x and 4.x wire formats. Fixes screen mirroring not displaying after upgrading to scrcpy 4.0 (#9).
+- **scrcpy v4.x protocol support** - The extension now supports both scrcpy 3.x and 4.x wire formats. Fixes screen mirroring not displaying after upgrading to scrcpy 4.0 (#9).
 - **Strategy-pattern protocol engines** - Wire-protocol parsing is now encapsulated in `src/protocol/` engines (`V3ProtocolEngine`, `V4ProtocolEngine`) selected by `createProtocolEngine(version)`. Adding support for a future v5 is a 2-step change: implement the engine, add a `case 5:` to the factory. No edits to `ScrcpyConnection` required.
 - **scrcpy v3.x backwards compatibility** - The legacy v3.x wire format (`codec_id + width + height` header, CONFIG at bit 63) is now explicitly supported via `V3ProtocolEngine`. Previously the extension assumed v3 format unconditionally; now it dispatches based on the installed scrcpy version.
 - **Video stream parser rewritten** - Implements the new scrcpy v4.x session-packet wire format introduced in PR [Genymobile/scrcpy#6159](https://github.com/Genymobile/scrcpy/pull/6159). The initial `codec_id` is now followed by a 12-byte SESSION packet (instead of the old 8-byte `width|height` block), and mid-stream SESSION packets are emitted on encoder resets (rotation, capture reset, virtual-display resize).
