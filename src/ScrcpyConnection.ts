@@ -125,6 +125,10 @@ export class ScrcpyConnection {
       this.writePos += chunk.length;
     }
 
+    peekUInt8(relOffset = 0): number {
+      return this.buf.readUInt8(this.readPos + relOffset);
+    }
+
     peekUInt32BE(relOffset = 0): number {
       return this.buf.readUInt32BE(this.readPos + relOffset);
     }
@@ -455,7 +459,7 @@ export class ScrcpyConnection {
       ...(this.config.keyboardMode === 'uhid' ? ['keyboard=uhid'] : []),
       'send_device_meta=true',
       'send_frame_meta=true',
-      'send_codec_meta=true',
+      'send_stream_meta=true',
     ];
 
     this.adbProcess = spawn(this.getAdbCommand(), serverArgs, {
@@ -719,14 +723,13 @@ export class ScrcpyConnection {
         }
 
         if (!codecReceived) {
-          // Video codec metadata: codec_id (4) + width (4) + height (4) = 12 bytes
-          if (buffer.available() < 12) {
+          // scrcpy v4.x video header: codec_id (4) + SESSION packet (12)
+          // The SESSION packet starts with MSB=1 and contains width/height.
+          if (buffer.available() < 4 + ScrcpyProtocol.SESSION_PACKET_SIZE) {
             break;
           }
 
           const codecId = buffer.readUInt32BE();
-          this.deviceWidth = buffer.readUInt32BE();
-          this.deviceHeight = buffer.readUInt32BE();
 
           // Determine codec type from codec ID
           if (codecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265) {
@@ -736,6 +739,14 @@ export class ScrcpyConnection {
           } else {
             this.detectedCodec = 'h264';
           }
+
+          // Parse mandatory SESSION packet (12 bytes)
+          const sessionPacket = buffer.readBytes(ScrcpyProtocol.SESSION_PACKET_SIZE);
+          if ((sessionPacket[0] & 0x80) === 0) {
+            console.error('Expected SESSION packet after codec_id but MSB was 0');
+          }
+          this.deviceWidth = sessionPacket.readUInt32BE(4);
+          this.deviceHeight = sessionPacket.readUInt32BE(8);
 
           console.log(
             `Video: codec=0x${codecId.toString(16)} (${this.detectedCodec}), ${this.deviceWidth}x${this.deviceHeight}`
@@ -754,62 +765,58 @@ export class ScrcpyConnection {
           continue;
         }
 
-        // Check for new codec metadata (sent on rotation/reconfiguration)
-        // Codec metadata: codec_id (4) + width (4) + height (4)
-        // H.264 codec_id = 0x68323634 ("h264")
-        // H.265 codec_id = 0x68323635 ("h265")
-        // AV1 codec_id = 0x00617631 ("av1")
-        if (buffer.available() >= 12) {
-          const possibleCodecId = buffer.peekUInt32BE(0);
-          if (
-            possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H264 ||
-            possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_H265 ||
-            possibleCodecId === ScrcpyProtocol.VIDEO_CODEC_ID_AV1
-          ) {
-            const newWidth = buffer.peekUInt32BE(4);
-            const newHeight = buffer.peekUInt32BE(8);
-
-            // Sanity check dimensions
-            if (newWidth > 0 && newWidth < 10000 && newHeight > 0 && newHeight < 10000) {
-              if (newWidth !== this.deviceWidth || newHeight !== this.deviceHeight) {
-                this.deviceWidth = newWidth;
-                this.deviceHeight = newHeight;
-                console.log(`Video reconfigured: ${this.deviceWidth}x${this.deviceHeight}`);
-                buffer.discard(12);
-
-                // Notify webview of new dimensions
-                this.onVideoFrame(
-                  new Uint8Array(0),
-                  true,
-                  false,
-                  this.deviceWidth,
-                  this.deviceHeight,
-                  this.detectedCodec
-                );
-                continue;
-              }
-            }
-          }
-        }
-
-        // Video packets: pts_flags (8) + packet_size (4) + data
-        if (buffer.available() < 12) {
+        // Peek the next 12-byte header. In v4.x the MSB of byte 0 discriminates:
+        //   1xxxxxxx = SESSION packet (sent on rotation / encoder reset / resize)
+        //   0Ck...... = media packet (PTS/flags + size + payload)
+        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE) {
           break;
         }
 
+        if ((buffer.peekUInt8(0) & 0x80) !== 0) {
+          // Mid-stream SESSION packet: parse new dimensions and notify webview.
+          if (buffer.available() < ScrcpyProtocol.SESSION_PACKET_SIZE) {
+            break;
+          }
+          const sessionPacket = buffer.readBytes(ScrcpyProtocol.SESSION_PACKET_SIZE);
+          const newWidth = sessionPacket.readUInt32BE(4);
+          const newHeight = sessionPacket.readUInt32BE(8);
+          // byte 3, bit 0 = "client resized" flag (ignored here)
+
+          if (newWidth > 0 && newWidth < 10000 && newHeight > 0 && newHeight < 10000) {
+            if (newWidth !== this.deviceWidth || newHeight !== this.deviceHeight) {
+              this.deviceWidth = newWidth;
+              this.deviceHeight = newHeight;
+              console.log(`Video session changed: ${this.deviceWidth}x${this.deviceHeight}`);
+              this.onVideoFrame(
+                new Uint8Array(0),
+                true,
+                false,
+                this.deviceWidth,
+                this.deviceHeight,
+                this.detectedCodec
+              );
+            }
+          }
+          continue;
+        }
+
+        // Media packet: pts_flags (8) + packet_size (4) + data
         const ptsFlags = buffer.peekBigUInt64BE(0);
         const packetSize = buffer.peekUInt32BE(8);
 
-        if (buffer.available() < 12 + packetSize) {
+        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE + packetSize) {
           break;
         }
 
         // Consume header
-        buffer.discard(12);
+        buffer.discard(ScrcpyProtocol.PACKET_HEADER_SIZE);
 
-        const isConfig = (ptsFlags & (1n << 63n)) !== 0n;
-        const isKeyFrame = (ptsFlags & (1n << 62n)) !== 0n;
-        // const pts = ptsFlags & ((1n << 62n) - 1n);
+        // v4.x flag bit positions (shifted down by 1 from v3.x):
+        //   bit 63 = SESSION (always 0 on this path)
+        //   bit 62 = CONFIG
+        //   bit 61 = KEY_FRAME
+        const isConfig = (ptsFlags & ScrcpyProtocol.PACKET_FLAG_CONFIG) !== 0n;
+        const isKeyFrame = (ptsFlags & ScrcpyProtocol.PACKET_FLAG_KEY_FRAME) !== 0n;
 
         const packetData = buffer.readBytes(packetSize);
 
@@ -875,19 +882,20 @@ export class ScrcpyConnection {
         }
 
         // Audio packets: pts_flags (8) + packet_size (4) + data
-        if (buffer.available() < 12) {
+        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE) {
           break;
         }
 
         const ptsFlags = buffer.peekBigUInt64BE(0);
         const packetSize = buffer.peekUInt32BE(8);
 
-        if (buffer.available() < 12 + packetSize) {
+        if (buffer.available() < ScrcpyProtocol.PACKET_HEADER_SIZE + packetSize) {
           break;
         }
 
-        buffer.discard(12);
-        const isConfig = (ptsFlags & (1n << 63n)) !== 0n;
+        buffer.discard(ScrcpyProtocol.PACKET_HEADER_SIZE);
+        // v4.x: CONFIG moved from bit 63 to bit 62 (bit 63 is now SESSION, unused for audio)
+        const isConfig = (ptsFlags & ScrcpyProtocol.PACKET_FLAG_CONFIG) !== 0n;
         const packetData = buffer.readBytes(packetSize);
 
         // Log first few audio packets for debugging

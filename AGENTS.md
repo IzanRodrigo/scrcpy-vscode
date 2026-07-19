@@ -231,16 +231,31 @@ src/
 
 ## Protocol Notes
 
+> Implements the **scrcpy v4.x wire protocol** (introduced in scrcpy 4.0, PR
+> [Genymobile/scrcpy#6159](https://github.com/Genymobile/scrcpy/pull/6159)).
+> scrcpy 3.x is no longer supported. See [docs/internals.md](./docs/internals.md)
+> for full byte-level details.
+
 ### Video Stream (from scrcpy server)
 
 1. Device name: 64 bytes (UTF-8, null-padded)
-2. Codec metadata: 12 bytes (codec_id + width + height)
-3. Packets: 12-byte header (pts_flags + size) + data
+2. Codec ID: 4 bytes (`0x68323634`="h264", `0x68323635`="h265", `0x00617631`="av1")
+3. Initial **SESSION packet**: 12 bytes (flags u32 with MSB=1, width u32, height u32)
+4. Sequence of SESSION packets and media packets, each with a 12-byte header:
+   - SESSION packet (MSB of byte 0 = 1): 12-byte total, contains new width/height. Sent on rotation/encoder reset/virtual-display resize.
+   - Media packet: 12-byte header (`pts_flags` u64 + `size` u32) + `size` bytes of payload
+
+### PTS/Flags bit layout (8 bytes, big-endian)
+
+- Bit 63: SESSION (only set on SESSION packets, never on media packets)
+- Bit 62: CONFIG (SPS/PPS or audio extradata)
+- Bit 61: KEY_FRAME
+- Bits 0-60: PTS
 
 ### Audio Stream (from scrcpy server, when audio=true)
 
 1. Codec ID: 4 bytes (0x6f707573 = "opus")
-2. Packets: 12-byte header (pts_flags + size) + Opus data
+2. Media packets: 12-byte header (same bit layout as video, no SESSION packets)
 
 ### Control Messages (to scrcpy server)
 
@@ -249,27 +264,34 @@ src/
 - Key events: 14 bytes (type=0, action, keycode, repeat, metastate)
 - Set clipboard: variable (type=9, sequence 8 bytes, paste flag 1 byte, length 4 bytes, UTF-8 text)
 - Rotate device: 1 byte (type=11)
+- v4.x also defines: RESET_VIDEO (17), CAMERA_SET_TORCH (18), CAMERA_ZOOM_IN/OUT (19/20), RESIZE_DISPLAY (21), SCAN_FILE (22, v4.1+) — not yet exposed in UI
 
 ### Device Messages (from scrcpy server via control socket)
 
 - Clipboard: variable (type=0, length 4 bytes, UTF-8 text)
 - ACK clipboard: 9 bytes (type=1, sequence 8 bytes)
+- UHID output: variable (type=2, id 2 bytes, length 2 bytes, data)
+
+> **v4.x strictness note**: the server now throws on unknown control message types
+> instead of silently ignoring them. Don't send stale/experimental type bytes.
 
 ### Connection Setup
 
 1. `adb reverse localabstract:scrcpy_XXXX tcp:PORT`
-2. Start server via `adb shell app_process`
+2. Start server via `adb shell app_process` (first arg is the scrcpy version string, must match the server jar)
 3. Accept 2 connections (audio=false) or 3 connections (audio=true): video, [audio], control
 4. Video socket receives stream, audio socket receives Opus stream (if enabled)
 5. Control socket is bidirectional (sends touch/keys, receives clipboard)
+6. Server args include `send_device_meta=true`, `send_frame_meta=true`, `send_stream_meta=true` (renamed from `send_codec_meta` in v4.x)
 
 ## Reference: scrcpy Source
 
-The main scrcpy repository is at `/Users/izan/Dev/Projects/scrcpy/`. Key reference files:
+The main scrcpy repository is at https://github.com/Genymobile/scrcpy. Key reference files:
 
 - `server/src/main/java/com/genymobile/scrcpy/Options.java` - Server parameters
 - `server/src/main/java/com/genymobile/scrcpy/device/DesktopConnection.java` - Socket handling
-- `app/src/demuxer.c` - Protocol parsing (C client)
+- `server/src/main/java/com/genymobile/scrcpy/device/Streamer.java` - Packet framing + SESSION/CONFIG/KEY_FRAME bit positions
+- `app/src/demuxer.c` - Protocol parsing (C client), reference for SESSION packet layout
 - `app/src/decoder.c` - Video decoding (FFmpeg)
 - `app/src/packet_merger.h` - Config packet merging
 

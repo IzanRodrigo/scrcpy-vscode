@@ -142,17 +142,82 @@ Android Device                    VS Code Extension
 
 ## Protocol Details
 
+> The extension implements the **scrcpy v4.x wire protocol** (introduced in scrcpy 4.0, PR #6159).
+> Older scrcpy 3.x servers are not supported.
+
 ### Video Stream Format
 
 1. Device name (64 bytes, null-padded UTF-8)
-2. Codec metadata (12 bytes): codec_id (4) + width (4) + height (4)
-3. Video packets: pts_flags (8) + size (4) + data
+2. Codec ID (4 bytes): `0x68323634` ("h264"), `0x68323635` ("h265"), or `0x00617631` ("av1")
+3. Initial **SESSION packet** (12 bytes, see below) — contains initial `width`/`height`
+4. A sequence of SESSION packets and media packets (12-byte header each), discriminated by the MSB of byte 0
 
-### PTS Flags (8 bytes)
+### SESSION Packet (12 bytes)
 
-- Bit 63: Config packet (SPS/PPS)
-- Bit 62: Keyframe
-- Bits 0-61: PTS value
+Sent once at stream start, and again on every encoder reset (rotation, flex-display resize, capture reset).
+The MSB of byte 0 is `1` to distinguish it from a media packet.
+
+```
+byte 0   byte 1   byte 2   byte 3
+10000000 00000000 00000000 0000000R
+^<------------------------------->^  flags (top bit must be 1)
+ `- session marker                  `- R = "client resized" (set on flex-display resize)
+
+byte 4..7                               byte 8..11
+<--------------------------------->     <--------------------------------->
+           video width (BE u32)                    video height (BE u32)
+```
+
+### Media Packet Header (12 bytes)
+
+```
+[ pts_flags (8 bytes BE) ][ packet_size (4 bytes BE) ]
+[ ... packet payload of packet_size bytes ...        ]
+```
+
+### PTS/Flags bit layout (v4.x)
+
+```
+byte 0   byte 1   ...   byte 7
+0CK...... ........ ........ ........
+^^^<------------------------------>
+|||               PTS (61 bits)
+|| `- KEY_FRAME  (bit 61)
+| `-- CONFIG     (bit 62)
+ `--- SESSION    (bit 63, always 0 for media packets)
+```
+
+| Flag      | Bit  | Purpose                                 |
+| --------- | ---- | --------------------------------------- |
+| SESSION   | 63   | Set only on SESSION packets (not media) |
+| CONFIG    | 62   | SPS/PPS or audio extradata              |
+| KEY_FRAME | 61   | Sync frame (IDR for H.264/H.265)        |
+| PTS       | 0-60 | Presentation timestamp (microseconds)   |
+
+> **Migration note from v3.x**: scrcpy 3.x used bits 63/62 for CONFIG/KEY_FRAME
+> and sent an 8-byte `width|height` block in place of the SESSION packet. The MSB
+> is now reserved for SESSION, and CONFIG/KEY_FRAME shift down by one bit. This
+> affects both video and audio media packets.
+
+### Audio Stream Format
+
+1. Codec ID (4 bytes): `0x6f707573` ("opus")
+2. Media packets (12-byte header, same flag bit layout as video). No SESSION packets.
+
+### Server Arguments
+
+The extension sends these required stream-meta args:
+
+- `send_device_meta=true` — emit the 64-byte device name on the first socket
+- `send_frame_meta=true` — emit the 12-byte per-packet header
+- `send_stream_meta=true` — emit codec_id + SESSION packets (renamed from `send_codec_meta` in v4.x)
+
+### Connection Setup
+
+1. `adb reverse localabstract:scrcpy_XXXX tcp:PORT`
+2. Start server via `adb shell app_process`
+3. Accept 2 connections (video + control) or 3 if audio enabled (video + audio + control)
+4. First positional arg to `Server.main` is the scrcpy version string (must match the server jar)
 
 ### Control Messages (Touch) - 32 bytes
 

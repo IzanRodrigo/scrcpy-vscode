@@ -5,6 +5,24 @@ All notable changes to the "Scrcpy for VS Code" extension will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: scrcpy v4.x protocol support** - The extension now requires scrcpy 4.0 or newer. scrcpy 3.x is no longer supported. Fixes screen mirroring not displaying after upgrading to scrcpy 4.0 (#9).
+- **Video stream parser rewritten** - Implements the new scrcpy v4.x session-packet wire format introduced in PR [Genymobile/scrcpy#6159](https://github.com/Genymobile/scrcpy/pull/6159). The initial `codec_id` is now followed by a 12-byte SESSION packet (instead of the old 8-byte `width|height` block), and mid-stream SESSION packets are emitted on encoder resets (rotation, capture reset, virtual-display resize).
+- **PTS/flags bit positions shifted** - The new SESSION flag occupies bit 63, pushing CONFIG down to bit 62 and KEY_FRAME down to bit 61 (previously bits 63 and 62). Applies to both video and audio media packets.
+- **Server arg renamed** - `send_codec_meta` → `send_stream_meta` (silently ignored by v4 servers, but updated for correctness).
+
+### Added
+
+- **`PACKET_FLAG_SESSION`/`PACKET_FLAG_CONFIG`/`PACKET_FLAG_KEY_FRAME` constants** exported from `ScrcpyProtocol.ts`, plus the v4.x control message types (`RESET_VIDEO`, `CAMERA_SET_TORCH`, `CAMERA_ZOOM_IN/OUT`, `RESIZE_DISPLAY`, `SCAN_FILE`) for future use.
+- **Session packet handling tests** - New tests for mid-stream SESSION packets (rotation, encoder reset) and the new v4 flag bit positions.
+
+### Removed
+
+- **scrcpy 3.x compatibility** - The codec-id heuristic for mid-stream rotation detection has been replaced by the proper SESSION-packet MSB check.
+
 ## [0.1.4] - 2025-12-18
 
 ### Changed
