@@ -288,6 +288,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }
 
     // Subscribe to state changes - send snapshots to webview
+    this._stateUnsubscribe?.();
     this._stateUnsubscribe = this._appState.subscribe((snapshot) => {
       if (this._isDisposed || !this._view) {
         return;
@@ -1395,14 +1396,19 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /**
+   * Tear down the device service, leaving the provider able to connect again.
+   *
+   * The state subscription stays alive: disconnectAll() dispatches CLEAR_ALL_DEVICES,
+   * and that snapshot is what removes the device tabs from the webview. AppStateManager
+   * also stays: it is created once, in the constructor, and is the single source of
+   * truth for the life of the provider. Both are torn down in _onViewDisposed().
+   */
   private async _disconnect() {
-    this._stateUnsubscribe?.();
-    this._stateUnsubscribe = undefined;
     if (this._deviceService) {
       this._deviceService.stopDeviceMonitoring();
       await this._deviceService.disconnectAll();
       this._deviceService = undefined;
-      this._appState = undefined;
     }
   }
 
@@ -1410,6 +1416,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
     this._isDisposed = true;
     this._abortController?.abort();
     await this._disconnect();
+    this._stateUnsubscribe?.();
+    this._stateUnsubscribe = undefined;
     while (this._disposables.length) {
       const disposable = this._disposables.pop();
       disposable?.dispose();
@@ -1427,9 +1435,16 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
   public async stop() {
     await this._disconnect();
-    this._view?.webview.postMessage({
-      type: 'status',
-      message: vscode.l10n.t('Disconnected'),
+    // Leave the view in the empty state. The webview has no 'status' message handler,
+    // and CLEAR_ALL_DEVICES does not clear a stale loading/error overlay.
+    this._appState?.dispatch({
+      type: ActionType.SET_STATUS_MESSAGE,
+      payload: {
+        type: 'empty',
+        text: vscode.l10n.t(
+          'No Android devices found.\n\nPlease connect a device and enable USB debugging.'
+        ),
+      },
     });
   }
 
