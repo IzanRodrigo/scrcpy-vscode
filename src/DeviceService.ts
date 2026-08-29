@@ -63,6 +63,7 @@ interface DeviceSession {
   isPaused: boolean;
   retryCount: number;
   isReconnecting: boolean;
+  isHandlingDisconnect: boolean;
   isDisposed: boolean;
   effectiveCodec: 'h264' | 'h265' | 'av1';
 
@@ -514,6 +515,7 @@ export class DeviceService {
       isPaused: false,
       retryCount: 0,
       isReconnecting: false,
+      isHandlingDisconnect: false,
       isDisposed: false,
       effectiveCodec: this.config.videoCodec,
       lastWidth: 0,
@@ -722,6 +724,22 @@ export class DeviceService {
    * Handle unexpected disconnect with auto-reconnect
    */
   private async handleDisconnect(session: DeviceSession, error: string): Promise<void> {
+    // One unplug raises several events: the video socket closes and the adb process
+    // exits. Only the first drives the reconnect. Without this guard the second event
+    // took the branch below and dropped the session while the first was still
+    // retrying on it, leaving an orphan connection that nothing could close.
+    if (session.isHandlingDisconnect) {
+      return;
+    }
+    session.isHandlingDisconnect = true;
+    try {
+      await this.runDisconnectHandling(session, error);
+    } finally {
+      session.isHandlingDisconnect = false;
+    }
+  }
+
+  private async runDisconnectHandling(session: DeviceSession, error: string): Promise<void> {
     // Don't reconnect if disposed or already reconnecting
     if (
       session.isDisposed ||

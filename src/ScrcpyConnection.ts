@@ -9,6 +9,9 @@ import { CursorBuffer } from './protocol/CursorBuffer';
 import { createProtocolEngine } from './protocol/createProtocolEngine';
 import type { ProtocolEngine } from './protocol/ProtocolEngine';
 
+// Cleanup adb calls run while a device may already be gone; never let them hang the UI.
+const ADB_CLEANUP_TIMEOUT_MS = 3000;
+
 // Video codec type
 export type VideoCodecType = 'h264' | 'h265' | 'av1';
 
@@ -441,7 +444,9 @@ export class ScrcpyConnection {
       // Cleanup reverse port forwarding (avoid leaking reverse entries on failure)
       if (this.scid) {
         try {
-          await this.execAdb(['reverse', '--remove', `localabstract:scrcpy_${this.scid}`]);
+          await this.execAdb(['reverse', '--remove', `localabstract:scrcpy_${this.scid}`], {
+            timeout: ADB_CLEANUP_TIMEOUT_MS,
+          });
         } catch {
           // Ignore cleanup errors
         }
@@ -1671,7 +1676,11 @@ export class ScrcpyConnection {
     // Cleanup reverse port forwarding
     if (this.deviceSerial && scid) {
       try {
-        await this.execAdb(['reverse', '--remove', `localabstract:scrcpy_${scid}`]);
+        // Bounded: a yanked device can leave adb waiting, and disconnect() is awaited
+        // by removeDevice()/disconnectAll(), which the UI waits on.
+        await this.execAdb(['reverse', '--remove', `localabstract:scrcpy_${scid}`], {
+          timeout: ADB_CLEANUP_TIMEOUT_MS,
+        });
       } catch {
         // Ignore cleanup errors
       }
