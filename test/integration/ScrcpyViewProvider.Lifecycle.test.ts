@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resetMocks as resetChildProcessMocks } from '../mocks/child_process';
+import { execFile } from 'child_process';
+import { MockChildProcess, resetMocks as resetChildProcessMocks } from '../mocks/child_process';
 
 vi.mock('child_process', () => import('../mocks/child_process'));
 vi.mock('vscode', () => import('../mocks/vscode'));
@@ -76,6 +77,35 @@ describe('ScrcpyViewProvider lifecycle', () => {
     await flush();
 
     expect(state._deviceService).toBeDefined();
+  });
+
+  it('can still show the device picker after a stop', async () => {
+    vi.mocked(execFile).mockImplementation(
+      (
+        _file: string,
+        _args: string[],
+        optionsOrCallback?: unknown,
+        callback?: (error: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+        cb?.(null, 'List of devices attached\nemulator-5554\tdevice model:Pixel_5\n', '');
+        return new MockChildProcess() as unknown as ReturnType<typeof execFile>;
+      }
+    );
+
+    await provider.stop();
+    await flush();
+
+    vi.mocked(vscode.window.showQuickPick).mockResolvedValue(undefined);
+
+    // The Add device button posts this. It used to return early on the missing
+    // device service, so the button did nothing once mirroring had been stopped.
+    const handler = view.messageHandlers[0];
+    await handler({ type: 'showDevicePicker' });
+    await flush();
+
+    expect(vscode.window.showQuickPick).toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
   });
 
   it('tells the webview the devices are gone when it stops', async () => {

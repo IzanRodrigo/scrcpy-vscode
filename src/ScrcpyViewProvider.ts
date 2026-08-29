@@ -253,18 +253,34 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _initializeAndConnect() {
-    if (!this._view || this._deviceService) {
+    if (this._deviceService || !this._ensureDeviceService()) {
       return;
+    }
+
+    this._autoConnectAllDevices();
+
+    // Start monitoring for new USB devices (auto-connect)
+    this._deviceService!.startDeviceMonitoring();
+  }
+
+  /**
+   * Build the device service if it is gone, and connect nothing.
+   *
+   * stop() clears the device service on purpose, so every entry point that can
+   * start a session has to be able to build it back. _initializeAndConnect() is
+   * this plus auto-connect, which is wrong after an explicit stop.
+   *
+   * @returns whether a device service is available.
+   */
+  private _ensureDeviceService(): boolean {
+    if (this._deviceService) {
+      return true;
+    }
+    if (!this._view || !this._appState) {
+      return false;
     }
 
     const config = this._getConfig();
-
-    // AppStateManager is created in constructor now.
-    // Ensure we have one
-    if (!this._appState) {
-      // Should not happen as per constructor
-      return;
-    }
 
     // Initialize settings and tool status in state
     const vsConfig = vscode.workspace.getConfiguration('scrcpy');
@@ -387,10 +403,7 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       vscode.env.clipboard
     );
 
-    this._autoConnectAllDevices();
-
-    // Start monitoring for new USB devices (auto-connect)
-    this._deviceService.startDeviceMonitoring();
+    return true;
   }
 
   private async _autoConnectAllDevices() {
@@ -655,12 +668,13 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
         break;
 
       case 'connectDevice':
-        if (this._deviceService && message.serial) {
+        if (message.serial && this._ensureDeviceService() && this._deviceService) {
           const devices = await this._deviceService.getAvailableDevices();
           const device = devices.find((d) => d.serial === message.serial);
           if (device) {
             try {
               await this._deviceService.addDevice(device);
+              this._deviceService.startDeviceMonitoring();
             } catch {
               // Error already handled via callback
             }
@@ -1345,7 +1359,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
 
   private async _showDevicePicker(): Promise<void> {
     const signal = this._abortController?.signal;
-    if (!this._deviceService) {
+    // Reachable from the empty state after stop(), when there is no device service.
+    if (!this._ensureDeviceService() || !this._deviceService) {
       return;
     }
 
@@ -1390,6 +1405,8 @@ export class ScrcpyViewProvider implements vscode.WebviewViewProvider {
       }
       try {
         await this._deviceService.addDevice(selected.device);
+        // Adding a device by hand resumes normal use, so watch for hot-plugs again.
+        this._deviceService.startDeviceMonitoring();
       } catch {
         // Error already handled via callback
       }
